@@ -1,0 +1,5516 @@
+#
+# ----------------------------------------------------------------
+# @file canopi-api.yaml
+#
+# @brief Canopi Platform API Specification
+#
+# Copyright 2020 Canopi India Pvt Ltd All Rights Reserved.
+# ----------------------------------------------------------------
+#
+openapi: 3.0.0
+
+info:
+  title: Canopi Client API Specification
+  version: 2.0.0
+  contact:
+    name: Canopi API Support
+    email: support@canopi.in
+  termsOfService: 'https://canopi.in/terms-of-service.html'
+  description: |
+    # Introduction
+    This specification defines Web APIs for the Canopi domestic Supply Chain Finance platform code named Everest. The Web APIs can be used by Customers
+    who use the platform in a SaaS model or end customers (Corporate organizations, Banks, Financial Institutions) who can integrate their platform
+    with the Canopi platform.
+
+    # Definitions
+    Some of the key terms used in the document.
+
+    ## Corporate
+    An organization that onboards and manages a *set* of Buyer and Seller companies.
+
+    ## Company
+    An organization registered on the Canopi portal as a **Business** organization.
+
+    ### Example
+    A fleet supplier is a Company.
+    A Buyer (Dealer) to a Corporate is a Company.
+
+    ## Profile
+    A Profile is applied to a Company (Organization) that makes the Company a Buyer or Seller or Corporate. It is possible for the same Company to
+    have more than one Profile.
+
+    Certain REST APIs are available only to certain Profiles. 
+
+    ## User
+    An **individual** authorized to represent a Company on the Canopi portal.
+
+    He/She will be required for the following:
+    - OTP based KYC verification.
+    - Accept the Canopi Terms and Conditions during Company onboarding.
+    - Be a signatory in loan agreements.
+
+    A Company *must* provide at least one User in case they need to be operational on the portal. A Company may not have a User in 
+    case they do not need operational rights.
+
+    ### Example
+    A fleet owner is a User.
+
+    ## Business Entity
+    General term for any business organization.
+
+    ### Example
+    - A Company is a Business Entity.
+    - Customer Organizations of a Company are Business Entities.
+
+    ## Program
+    A credit program involving a Corporate and a set of Buyers, Sellers and Lender companies is defined as a Program. A Corporate acting as
+    principal or Anchor is central to the idea of a credir program. In addition, a Program contains parameters that define the Workflows, 
+    Business Rules and a set of associated templates or files (e.g Payment Advice template) that are used during the transactions. These parameters
+    control how the Sellers or Buyers will get funded and at what interest rate etc.
+
+    The Corporate company (the Program Anchor) could also be either a Buyer or a Seller in a given Program. This is typically used where the credit program
+    is run for the Corporate company itself.
+
+    Alternatively, the Corporate company may not be a Buyer or Seller and instead may have a set of companies as Buyers and Sellers under it.
+    This would represent a real world case where the Corporate is a B2B Aggregator that onboards a set of Buyers and Sellers on it's platform.
+
+    ### Example
+    - A Program with a Corporate company as Buyer and a set of Seller companies as Vendors form a Vendor Finance program
+    - A Program with a set of Buyer companies as Dealers and a Corporate company as a Seller form a Channel Finance program
+    - A Program with a set of Buyer companies and a set of Seller companies where Sellers invoices get funded is also type of Vendor Finance program 
+
+    # Getting Started
+    This section introduces the Canopi RESTful APIs, and the setup process for using them.
+
+    ## API Model
+    The API interaction follows the OAuth2.0 model. The supported flows for *public* clients are the following 
+    - Authorization Code
+    - PKCE Extended Authorization Code
+    
+    In either flow, an Access Token is returned back to the Client and this Bearer Token must be submitted in every request to gain 
+    access to the end point.
+    
+    Only HTTPS traffic is allowed. Additional security measures may be defined depending on the integration.
+
+    ### Note
+    - Contact support@canopi.in to receive a client ID and client Secret for the application you are planning to build and integrate with
+    Canopi platform.
+
+    ## API Requests
+    To make a REST API request, one of the HTTP methods can be combined with the URL to the API service. The HTTP verb may denote different
+    actions on a Resouce such as POST or DELETE.  
+
+    ### Note 
+    - Pagination is supported for requests which could send a large amount of data in it's responses
+    - Query parameters are option and used as *filters* and not as *selectors*. i.e. using a query parameter in a GET request will not return
+    data over and above what would have been returned by the GET request without the parameter
+
+    ## API Responses
+    - For successful requests, Canopi returns HTTP Status code 200
+    - For failed requests, Canopi returns HTTP Status code 4xx or 5xx
+
+    | Status | Meaning | Description |
+    | ------- | -------- | --------- |
+    | 400     | Invalid Request   | Invalid or incomplete data provided by the client
+    | 401     | Authentication Error | Authentication failed due to invalid authentication credentials
+    | 403     | Authorization Error  | Authorization failed due to insufficient permissions 
+    | 500     | Internal Server Error | An internal server error has occured
+    | 501     | Service Unavailable |  Service is unavailable
+
+    For all responses except Authentication Error, the API returns a response_code object that includes the following details.
+
+    | Field Name | Description |
+    | --- | -- |
+    | id | Unique identifier showing response
+    | status | Can have the values successful or failure
+    | message | In case of failure in status, provides more description on the error
+
+    For e.g.  
+    ```
+    {
+      "id": "123e4567-e89b-12d3-a456-426655440000"
+      "status": "failure"
+      "message": "Invalid data provided"
+    }
+    ```    
+
+    ## Scope
+    Many APIs have access restrictions that define who can invoke the service. For e.g.
+    a Vendor organization cannot invoke APIs to Program Management APIs to edit or update Vendor list.
+    On the other hand, a backend user may be able to update this record.
+
+    ## Invoice flows
+    The transactional APIs involving creation of invoices has been modelled on real world behaviour where the Corporate company decides the invoice
+    selection and flows. An Invoice always means a Sales Invoice and never a purchase invoice (although Channel Finance is sometimes called as Purchase
+    Bill Discounting). Hence 
+    - A Vendor Finance transaction involves funding Sales invoices of the Vendor and 
+    - A Channel Finance transaction involves funding Sales invoice of the Corporate to the Dealer 
+
+    Now consider these scenarios
+    - A Vendor Finance flow in which Corporate will upload Vendor's Sales invoices. 
+    - A Channel Finance flow in which Corporate will upload Sales invoices utilizing Dealer limits. 
+    - The Corporate is a Seller in another program and will upload their Sales invoice.
+
+    The Invoice APIs distinguishes these different flows by using company/self and company/{company_id} to represent whether the caller is funding a
+    counterparty Sales invoice or their own Sales invoice.
+    
+    So the above 3 cases would be represented as
+    - v2/programs/{program_id}/company/{vendor_id}/invoices
+    - v2/programs/{program_id}/company/self/invoices
+    - v2/programs/{program_id}/company/self/invoices
+
+    Currently Channel Finance flows are restricted to Corporates only and Corporate organizations would use v2/programs/{program_id}/company/self/invoices
+    to upload the Channel finance invoice. But in case the Dealer upload flow needs to be supported, the Dealer would invoke the following API to upload
+    the Sales invoice of the counterparty Corporate
+    - v2/programs/{program_id}/company/{corporate_id}/invoices
+
+    ## Program level permissions
+    Different Companies within a Program will be assigned different types. The following are the valid types
+    - Corporate : There can be only one Corporate in a given program
+    - Seller : There can be multiple Sellers
+    - Buyer : There can be multiple Buyers
+
+    A program level assignment into these categories controls the view each Company has access to. The following are the permissions
+
+    ### View permission to other parties
+    - Corporate : Has view permission of all Seller and Buyer companies
+    - Seller : Has view permission to only Buyer companies
+    - Buyer : Has view permission to only Seller companies
+
+    ### Invoice upload permission
+    Invoice upload permission is a parameter that is configured in the Program's Settings.
+
+    ### Interest rate view permission
+    Interest rates are sometimes hidden from the Customer's view. For e.g. a Seller availing Bill Discounting facility may not be able to view the applicable interest rates.
+
+    Note: Use the /programs/{program_id}/permissions API to retrieve these permissions for currently logged in Company 
+
+    ## Types
+    Clarification on some of the object types used in the document.
+
+    - `date` refers to full-date as defined in
+    [RFC3339](https://xml2rfc.tools.ietf.org/public/rfc/html/rfc3339.html#anchor14).
+
+    - `date-time` refers to date-time as defined in
+    [RFC3339](https://xml2rfc.tools.ietf.org/public/rfc/html/rfc3339.html#anchor14).
+
+    - `float` refers to a single precision floating point number as
+      defined by [IEEE-754](https://en.wikipedia.org/wiki/Single-precision_floating-point_format).
+
+servers:
+  - url: 'https://test-api.canopi.in'
+    description: Development API Server
+  - url: 'https://api.canopi.in'
+    description: Production API Server
+
+tags:
+  - name: Access Token API
+    description: |
+      Operation used to obtain access tokens.
+  - name: Systems API
+    description: |
+      Operations used to determine Global/instance details and settings
+  - name: Corporate Management API
+    description: |
+      Operations used to onboard and manage Corporate for Site Operations.
+  - name: Program Management API
+    description: |
+      Operations used to create and manage Corporate programs for Site operations.
+  - name: Company API
+    description: |
+      Operations used to retrieve and update Company specific data.
+  - name: Company Management API
+    description: |
+      Operations used to manage Company information.
+  - name: Lender Management API
+    description: |
+      Operations used to manage Lender information.
+  - name: Program API
+    description: |
+      Operations used to retrieve details of Corporate program for Companies.
+  - name: Invoice API
+    description: |
+      Operations used to create and update invoices for Companies.
+  - name: InvoiceFile API
+    description: |
+      Operations used to create and update invoices in File mode for Companies.
+  - name: Loan Application API
+    description: |
+      Operations used to create Loan Requests
+  - name: Dynamic Discounting Application API
+    description: |
+      Operations used to create Dynamic Discounting Requests
+  - name: Payment Application API
+    description: |
+      Operations used to create direct Payment Requests against Invoices
+  - name: Loan API
+    description: |
+      Operations used to apply for loans for Companies and manage the loan lifecycle.
+  - name: Repayment API
+    description: |
+      Operations used to repay loans.
+
+paths:
+  '/v2/o/oauth2/authorize':
+    get:
+      tags:
+        - Access Token API
+      security: []
+      summary: Authorize the Client application
+      description: |
+        Use this operation to authorize the client application. This is valid for the following flows
+        - Authorization Code
+        - PKCE Extended Authorization Code
+
+      operationId: getAuthorizationCode
+      parameters:
+        - in: query
+          name: response_type
+          description: |
+            Response Type as per OAuth2.0 specification. Send value as code here 
+          schema:
+            type: string
+            format: byte
+          required: true
+
+        - in: query
+          name: client_id
+          description : |
+            Client ID provided by Canopi Support team.
+          schema:
+            type: string
+            format: byte
+          required: true
+        
+      responses:
+        '200':
+          $ref: '#/components/responses/AccessTokenResponse'
+
+  '/v2/o/oauth2/token':
+    post:
+      tags:
+        - Access Token API
+      security: []
+      summary: Get Access Token
+      description: |
+        Use this operation to obtain an access token. The following parameters must be encoded as application/x-www-form-urlencoded.
+        - client_id=[client ID]
+        - client_secret=[client secret]
+        - grant_type=authorization_code
+        - code=[authorization server generated code]
+        - redirect_uri=[registered callback URI]
+
+      operationId: getAccessToken
+        
+      responses:
+        '200':
+          $ref: '#/components/responses/AccessTokenResponse'
+
+  '/v2/global-settings':
+    get:
+      tags:
+        - Systems API
+      summary: Get Global Settings
+      description: |
+        Reads the values setup globally.
+      operationId: getGlobalSettings
+      responses:
+        '200':
+          $ref: '#/components/responses/GlobalSettingsResponse'
+        
+
+  '/v2/corporate-management/corporates':
+    post:
+      tags:
+        - Corporate Management API
+      summary: Create A Corporate
+      description: |
+        Creates a Corporate organization in Canopi platform.
+      operationId: createCorporate
+      requestBody:
+        description: Corporate information.
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CorporateRegistration'
+        required: true
+      responses:
+        '200':
+          $ref: '#/components/responses/CompanyRegisterResponse'
+          
+    get:
+      tags:
+        - Corporate Management API
+      summary: List Corporates
+      description: |
+        Lists the Corporate organizations in Canopi platform.
+      operationId: listCorporates
+      responses:
+        '200':
+          $ref: '#/components/responses/CompanyIdsResponse'
+
+  '/v2/corporate-management/{company_id}':
+    get:
+      tags:
+        - Corporate Management API
+      summary: Get Corporate Details
+      description: |
+        Use this operation to obtain the registration status of a
+        Company.
+      operationId: getCorporateDetails
+      parameters:
+        - in: path
+          name: company_id
+          description: Company-ID.
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          $ref: '#/components/responses/CorporateDetailsResponse'
+
+    delete:
+      tags:
+        - Corporate Management API
+      summary: Delete A Corporate
+      description: |
+        Use this operation to delete a Corporate.
+      operationId: deleteCorporate
+      parameters:
+        - in: path
+          name: company_id
+          description: Company-ID.
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          $ref: '#/components/responses/CompanyDeleteResponse'
+
+  '/v2/corporate-management/{company_id}/sellers':
+    post:
+      tags:
+        - Corporate Management API
+      summary: Add new Sellers
+      description: |
+        Add new Sellers for the Company.
+      operationId: addNewCorporateSellers
+      parameters:
+        - in: path
+          name: company_id
+          description: Company-ID of the Corporate.
+          schema:
+            type: string
+          required: true
+      requestBody:
+        description: Seller information.
+        content:
+          application/json:
+            schema:
+                $ref: '#/components/schemas/CreateSellersObject'
+        required: true
+      responses:
+        '200':
+          $ref: '#/components/responses/OperationStatusResponse'
+
+    get:
+      tags:
+        - Corporate Management API
+      summary: List all Sellers
+      description: |
+        Use this operation to obtain the details of Seller info for the
+        Company.
+      operationId: listCorporateSellers
+      parameters:
+        - in: path
+          name: company_id
+          description: Company-ID of the Corporate.
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          $ref: '#/components/responses/CompanySellersResponse'
+
+  '/v2/corporate-management/{company_id}/buyers':
+    post:
+      tags:
+        - Corporate Management API
+      summary: Add new Buyers
+      description: |
+        Add new Buyers for the Company.
+      operationId: addNewCorporateBuyers
+      parameters:
+        - in: path
+          name: company_id
+          description: Company-ID of the Corporate.
+          schema:
+            type: string
+          required: true
+      requestBody:
+        description: Buyer information.
+        content:
+          application/json:
+            schema:
+                $ref: '#/components/schemas/CreateBuyersObject'
+        required: true
+      responses:
+        '200':
+          $ref: '#/components/responses/OperationStatusResponse'
+
+    get:
+      tags:
+        - Corporate Management API
+      summary: List all Buyers
+      description: |
+        Use this operation to obtain the details of Buyer info for the
+        Company.
+      operationId: listCorporateBuyers
+      parameters:
+        - in: path
+          name: company_id
+          description: Company-ID of the Corporate.
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          $ref: '#/components/responses/CompanyBuyersResponse'
+
+  '/v2/program-management/programs':
+    post:
+      tags:
+        - Program Management API
+      summary: Create Corporate Program
+      description: |
+        Creates a new Corporate Program. This creates a new Program in the current organization.The organization must have a profile of type Corporate in order for the function to succeed.
+      operationId: createProgram
+      requestBody:
+        description: Program object.
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProgramCreateRequest'
+        required: true
+      responses:
+        '200':
+          $ref: '#/components/responses/ProgramCreateResponse'
+
+    get:
+      tags:
+        - Program Management API
+      summary: Get Corporate Programs
+      description: |
+        List all Corporate Programs.  
+      operationId: listPrograms
+      responses:
+        '200':
+          $ref: '#/components/responses/ListProgramIDsResponse'
+
+  '/v2/program-management/programs/{program_id}':
+    get:
+      tags:
+        - Program Management API
+      summary: Get Program details
+      description: |
+        Returns complete details of a Program.  
+      operationId: getProgramDetails
+      parameters:
+        - in: path
+          name: program_id
+          description: Program-ID.
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          $ref: '#/components/responses/ProgramDetailsResponse'
+
+  '/v2/program-management/programs/{program_id}/lender-list':
+    put:
+      tags:
+        - Program Management API
+      summary: Add new Lenders 
+      description: |
+        Updates a list of new Lender  to an existing Program.
+      operationId: updateProgramLenderList
+      parameters:
+        - in: path
+          name: program_id
+          description: Program-ID.
+          schema:
+            type: string
+          required: true
+      requestBody:
+        description: List of Lenders.
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProgramUpdateLendersList'
+        required: true
+      responses:
+        '200':
+          $ref: '#/components/responses/ProgramUpdateResponse'
+
+
+  '/v2/program-management/programs/{program_id}/buyer-list':
+    put:
+      tags:
+        - Program Management API
+      summary: Update List of Buyers
+      description: |
+        Updates a list of Buyers in the Program.
+      operationId: updateProgramBuyerList
+      parameters:
+        - in: path
+          name: program_id
+          description: Program-ID.
+          schema:
+            type: string
+          required: true
+      requestBody:
+        description: List of Buyers.
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProgramUpdateBuyersList'
+        required: true
+      responses:
+        '200':
+          $ref: '#/components/responses/ProgramUpdateResponse'
+
+  '/v2/program-management/programs/{program_id}/seller-list':
+    put:
+      tags:
+        - Program Management API
+      summary: Update List of Sellers 
+      description: |
+        Updates a list of Sellers in the Program.
+      operationId: updateProgramSellerList
+      parameters:
+        - in: path
+          name: program_id
+          description: Program-ID.
+          schema:
+            type: string
+          required: true
+      requestBody:
+        description: List of Sellers.
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProgramUpdateSellersList'
+        required: true
+      responses:
+        '200':
+          $ref: '#/components/responses/ProgramUpdateResponse'
+
+  '/v2/program-management/programs/{program_id}/permissions':
+    get:
+      tags:
+        - Program Management API
+      summary: Get program permissions 
+      description: |
+        Gets Program permissions for the list of companies in the Program.
+      operationId: getProgramMgmtPermissions
+      parameters:
+        - in: path
+          name: program_id
+          description: Program-ID.
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          $ref: '#/components/responses/ProgramPermissionsResponse'
+
+  '/v2/company-management':
+    post:
+      tags:
+        - Company Management API
+      summary: Create a new Company 
+      description: |
+        Create a new Company and associated details.
+      operationId: createNewCompany
+      requestBody:
+        description: Company object.
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CompanyAndUser'
+        required: true
+      responses:
+        '200':
+          $ref: '#/components/responses/CompanyRegisterResponse'
+
+  '/v2/company-management/{company_id}':
+    get:
+      tags:
+        - Company Management API
+      parameters:
+        - in: path
+          name: company_id
+          description: Company-ID of the Organization.
+          schema:
+            type: string
+          required: true  
+      summary: Get Company details 
+      description: |
+        Retrieve details of the Company and registered Users.
+      operationId: getCompanyDetails
+      responses:
+        '200':
+          $ref: '#/components/responses/CompanyDetailsResponse'
+  
+    put:
+      tags:
+        - Company Management API
+      summary: Update Company details
+      parameters:
+        - in: path
+          name: company_id
+          description: Company-ID of the Organization.
+          schema:
+            type: string
+          required: true 
+      description: |
+        Update details of the Company and registered Users.
+      operationId: updateCompanyDetails
+      requestBody:
+        description: Company object.
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CompanyAndUser'
+        required: true
+      responses:
+        '200':
+          $ref: '#/components/responses/CompanyRegisterResponse'
+
+  '/v2/company-management/{company_id}/users':
+    post:
+      tags:
+        - Company Management API
+      summary: Add new Users
+      description: |
+        Add new Users for the Company.
+      operationId: addNewCompanyUsers
+      parameters:
+        - in: path
+          name: company_id
+          description: Company-ID of the Organization.
+          schema:
+            type: string
+          required: true
+      requestBody:
+        description: List of Users.
+        content:
+          application/json:
+            schema:
+              items:
+                $ref: '#/components/schemas/User'
+        required: true
+      responses:
+        '200':
+          $ref: '#/components/responses/OperationStatusResponse'
+
+    get:
+      tags:
+        - Company Management API
+      summary: List all Users
+      description: |
+        Use this operation to obtain the details of Seller info for the
+        Company.
+      operationId: listCompanyUsers
+      parameters:
+        - in: path
+          name: company_id
+          description: Company-ID of the Organization.
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          $ref: '#/components/responses/CompanyUsersResponse'
+
+  '/v2/company-management/{company_id}/documents':
+    post:
+      tags:
+        - Company Management API
+      summary: Add new Documents
+      description: |
+        Add new Documents for the Company.
+      operationId: addNewCompanyDocuments
+      parameters:
+        - in: path
+          name: company_id
+          description: Company-ID of the Organization.
+          schema:
+            type: string
+          required: true
+      requestBody:
+        description: List of Documents.
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CompanyDocuments'
+        required: true
+      responses:
+        '200':
+          $ref: '#/components/responses/OperationStatusResponse'
+
+    get:
+      tags:
+        - Company Management API
+      summary: List all Documents
+      description: |
+        Use this operation to obtain all the documents for the given Company.
+      operationId: listCompanyDocuments
+      parameters:
+        - in: path
+          name: company_id
+          description: Company-ID of the Organization.
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          $ref: '#/components/responses/CompanyDocumentsResponse'
+
+  '/v2/company-management/{company_id}/bankaccounts':
+    post:
+      tags:
+        - Company Management API
+      summary: Add new Bank Accounts
+      description: |
+        Add new Bank Accounts for the Company.
+      operationId: addNewCompanyBankAccounts
+      parameters:
+        - in: path
+          name: company_id
+          description: Company-ID of the Organization.
+          schema:
+            type: string
+          required: true
+      requestBody:
+        description: List of Bank Accounts.
+        content:
+          application/json:
+            schema:
+              items:
+                $ref: '#/components/schemas/BankAccount'
+        required: true
+      responses:
+        '200':
+          $ref: '#/components/responses/OperationStatusResponse'
+
+    get:
+      tags:
+        - Company Management API
+      summary: List all Bank Accounts
+      description: |
+        Use this operation to obtain the details of Bank Accounts for the
+        Company.
+      operationId: listCompanyBankAccounts
+      parameters:
+        - in: path
+          name: company_id
+          description: Company-ID of the Organization.
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          $ref: '#/components/responses/CompanyBankAccountsResponse'
+
+  '/v2/company-management/{company_id}/profiles':
+    put:
+      tags:
+        - Company Management API
+      summary: Update new profile for the Company
+      description: |
+        Adds new profiles for the Company.
+      operationId: updateCompanyProfile
+      parameters:
+        - in: path
+          name: company_id
+          description: Company-ID of the Organization.
+          schema:
+            type: string
+          required: true
+      requestBody:
+        description: Profile.
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CompanyProfileEnum'
+        required: true
+      responses:
+        '200':
+          $ref: '#/components/responses/OperationStatusResponse'
+
+    get:
+      tags:
+        - Company Management API
+      summary: List all Profiles
+      description: |
+        Use this operation to obtain all the profiles for the given Company.
+      operationId: listCompanyProfiles
+      parameters:
+        - in: path
+          name: company_id
+          description: Company-ID of the Organization.
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          $ref: '#/components/responses/CompanyProfilesResponse'
+
+  '/v2/lender-management/lenders':
+    post:
+      tags:
+        - Lender Management API
+      summary: Create A Lender
+      description: |
+        Creates a Lender organization in Canopi platform.
+      operationId: createLender
+      requestBody:
+        description: Lender information.
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LenderRegistration'
+        required: true
+      responses:
+        '200':
+          $ref: '#/components/responses/CompanyRegisterResponse'
+
+    get:
+      tags:
+        - Lender Management API
+      summary: List all Lenders
+      description: |
+        Use this operation to obtain all the Lenders on the platform.
+      operationId: listPlatformLenders
+      responses:
+        '200':
+          $ref: '#/components/responses/LenderIdsResponse'
+
+  '/v2/lender-management/{company_id}':
+    get:
+      tags:
+        - Lender Management API
+      summary: Get Lender Details
+      parameters:
+        - in: path
+          name: company_id
+          description: Company-ID of the Organization.
+          schema:
+            type: string
+          required: true
+      description: |
+        Use this operation to obtain all the information about a Lender.
+      operationId: getLenderDetails
+      responses:
+        '200':
+          $ref: '#/components/responses/LenderDetailsResponse'
+
+  '/v2/companies':
+    get:
+      tags:
+        - Company API
+      summary: Get Company details 
+      description: |
+        Retrieve details of the Company and registered Users.
+      operationId: getCompanyDetail
+      responses:
+        '200':
+          $ref: '#/components/responses/CompanyDetailsResponse'
+
+  '/v2/programs':
+    get:
+      tags:
+        - Program API
+      summary: List Program IDs 
+      description: |
+        Returns the list of available Programs for the Company.
+      operationId: getProgramIDs
+      responses:
+        '200':
+          $ref: '#/components/responses/ListProgramIDsResponse'
+
+  '/v2/programs/{program_id}/permissions':
+    get:
+      tags:
+        - Program API
+      summary: Get Program Permissions 
+      description: |
+        Returns a list of available permissions for the Company in the Program.
+      operationId: getProgramPermissions
+      parameters:
+        - in: path
+          name: program_id
+          description: Program-ID
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          $ref: '#/components/responses/ProgramPermissionsResponse'
+
+  '/v2/programs/{program_id}/params':
+    get:
+      tags:
+        - Program API
+      summary: Get Program Parameters 
+      description: |
+        Returns the Program level Parameters for the Company in the Program.
+      operationId: getProgramParams
+      parameters:
+        - in: path
+          name: program_id
+          description: Program-ID
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          $ref: '#/components/responses/ProgramParamsResponse'
+
+  '/v2/programs/{program_id}/buyers':
+    get:
+      tags:
+        - Program API
+      summary: List Program Buyers 
+      description: |
+        Returns a list of all Buyer companies in the given Program.  
+      operationId: listProgramBuyers
+      parameters:
+        - in: path
+          name: program_id
+          description: Program-ID
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          $ref: '#/components/responses/ListProgramBuyersResponse'
+
+  '/v2/programs/{program_id}/sellers':
+    get:
+      tags:
+        - Program API
+      summary: List Program Sellers 
+      description: |
+        Returns a list of all Seller companies in the given Program.  
+      operationId: listProgramSellers
+      parameters:
+        - in: path
+          name: program_id
+          description: Program-ID
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          $ref: '#/components/responses/ListProgramSellersResponse'
+
+  '/v2/programs/{program_id}/credit-limits':
+    get:
+      tags:
+        - Program API
+      summary: Get Credit Limits
+      description: |
+        Returns the Credit Limits for the Company under the Program.
+      operationId: getCreditLimits
+      parameters:
+        - in: path
+          name: program_id
+          description: Program-ID
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          $ref: '#/components/responses/CreditLimitResponse'
+
+  '/v2/programs/{program_id}/company/self/invoices':
+    post:
+      tags:
+        - Invoice API
+      summary: Create Invoice
+      description: |
+        Creates a new Invoice. The Sales Invoice is created in the current organization under the given Program.
+        - In a Vendor Finance program, Seller may use this API to create a Sales Invoice against a Corporate Buyer
+        - In a Channel Finance program, Corporate Seller may use this API to create a Sales Invoice against a Dealer 
+      operationId: createInvoice
+      parameters:
+        - in: path
+          name: program_id
+          description: Program-ID.
+          schema:
+            type: string
+          required: true
+      requestBody:
+        description: Object to create an Invoice
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InvoiceCreateObject'
+        required: true
+      responses:
+        '200':
+          $ref: '#/components/responses/InvoiceCreateResponse'
+
+    get:
+      tags:
+        - Invoice API
+      summary: List Invoices
+      description: |
+        Lists Invoices for the company under the Program.
+        - In a Vendor Finance program, Seller may use this API to list their Sales Invoice against a Corporate Buyer. If the
+        Invoice was uploaded by the Corporate Buyer, then it is visible in the Seller organization only when the Corporate Buyer
+        has submitted the Invoice for funding 
+        - In a Channel Finance program, Corporate Seller may use this API to list all Sales invoices
+      operationId: listInvoices
+      parameters:
+        - in: path
+          name: program_id
+          description: Program-ID.
+          schema:
+            type: string
+          required: true
+        - in: query
+          name: start_date
+          description: Return results from this start date onwards
+          schema:
+            type: string
+            format: date-time
+        - in: query
+          name: end_date
+          description: Return results within this end date onwards
+          schema:
+            type: string
+            format: date-time
+        - in: query
+          name: status
+          description: Return results where InvoiceStatus is this
+          schema:
+            type: string
+            enum:
+              - created
+              - invoice-draft
+              - waiting-for-approval
+              - waiting-for-funding
+              - funded
+              - closed
+              - rejected-by-approver
+              - rejected-by-funding
+              - overdue
+              - repaid
+              - partial
+              - dispute
+              - retired
+              - funding-retired
+              - approved-retired
+              - auto-close
+              - auto-pay
+              - waiting-for-acceptance
+              - epo-funded
+              - Invoice-Confirmed
+              - epo-accepted
+              - Failed
+      responses:
+        '200':
+          $ref: '#/components/responses/ListInvoiceIDsResponse'
+
+  '/v2/programs/{program_id}/sellers/{company_id}/invoices':
+    post:
+      tags:
+        - Invoice API
+      summary: Create Invoice for Seller
+      description: |
+        Creates a new Invoice in the Seller organization under a program. This may be used by a Buyer organization to
+        create a Sales Invoice in the Seller organization. 
+        - In a Vendor Finance program, Corporate Buyer may use this API to create a Sales Invoice in the Seller organization
+        - In a Channel Finance program, Dealer may use this API to create a Sales Invoice in the Corporate Seller organization  
+      operationId: createSellerInvoice
+      parameters:
+        - in: path
+          name: program_id
+          description: Program-ID.
+          schema:
+            type: string
+          required: true
+        - in: path
+          name: company_id
+          description: Company-ID.
+          schema:
+            type: string
+          required: true
+      requestBody:
+        description: Object to create an Invoice.
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InvoiceCreateObject'
+        required: true
+      responses:
+        '200':
+          $ref: '#/components/responses/InvoiceCreateResponse'
+
+    get:
+      tags:
+        - Invoice API
+      summary: List Seller Invoices
+      description: |
+        Lists Seller organization invoices where the current organization is the Buyer.
+        - In a Vendor Finance program, Corporate Buyer may use this API to list Sales Invoice for a particular Seller
+        - In a Channel Finance program, Dealer may use this API to list Sales Invoice against the Corporate Seller
+      operationId: listInvoicesForSeller
+      parameters:
+        - in: path
+          name: company_id
+          description: Company-ID.
+          schema:
+            type: string
+          required: true
+        - in: path
+          name: program_id
+          description: Program-ID.
+          schema:
+            type: string
+          required: true
+        - in: query
+          name: start_date
+          description: Return results from this start date onwards
+          schema:
+            type: string
+            format: date-time
+        - in: query
+          name: end_date
+          description: Return results within this end date onwards
+          schema:
+            type: string
+            format: date-time
+        - in: query
+          name: status
+          description: Return results where InvoiceStatus is this
+          schema:
+            type: string
+            enum:
+              - created
+              - invoice-draft
+              - waiting-for-approval
+              - waiting-for-funding
+              - funded
+              - closed
+              - rejected-by-approver
+              - rejected-by-funding
+              - overdue
+              - repaid
+              - partial
+              - dispute
+              - retired
+              - funding-retired
+              - approved-retired
+              - auto-close
+              - auto-pay
+              - waiting-for-acceptance
+              - epo-funded
+              - Invoice-Confirmed
+              - epo-accepted
+              - Failed
+      responses:
+        '200':
+          $ref: '#/components/responses/ListInvoiceIDsResponse'
+
+  '/v2/invoices/{invoice_id}':
+    get:
+      tags:
+        - Invoice API
+      summary: Get Invoice details
+      description: |
+        Use this operation to get details of an Invoice.
+      operationId: getInvoice
+      parameters:
+        - in: path
+          name: invoice_id
+          description: Invoice-ID.
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          $ref: '#/components/responses/InvoiceDetailsResponse'
+
+    delete:
+      tags:
+        - Invoice API
+      summary: |
+        Delete an existing Invoice.
+      description: |
+        Use this operation to delete a Invoice. Only invoices in Draft state can be deleted.
+      operationId: deleteInvoice
+      parameters:
+        - in: path
+          name: invoice_id
+          description: Invoice-ID.
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          $ref: '#/components/responses/InvoiceDeleteResponse'
+
+  '/v2/loan-applications/invoice-files/{invoice_file_id}':
+    post:
+      tags:
+        - Loan Application API
+      summary: Create Loan Request against an Invoice File
+      description: |
+        Creates a new Loan Request against an Invoice File. This request validates the submitter details and 
+        changes the Invoice File status in case the request has been successfully submitted
+      operationId: createLoanRequestForInvoiceFile
+      parameters:
+        - in: path
+          name: invoice_file_id
+          description: Invoice-File-ID.
+          schema:
+            type: string
+          required: true
+      requestBody:
+        description: LoanApplication object.
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoanApplicationRequestInvoiceFile'
+        required: true
+      responses:
+        '200':
+          $ref: '#/components/responses/LoanApplicationCreateResponse'
+
+  '/v2/loan-applications/invoice-files/{invoice_file_id}/confirm':
+    post:
+      tags:
+        - Loan Application API
+      summary: Provide confirmation for Loan Request against Invoice File
+      description: |
+        Provides the counterparty confirmation for a Loan Request. For this API to be functional, the program where
+        the invoice is provided must allow for counter party confirmation
+      operationId: createLoanRequestConfirmationForInvoiceFile
+      parameters:
+        - in: path
+          name: invoice_file_id
+          description: Invoice-File-ID.
+          schema:
+            type: string
+          required: true
+      requestBody:
+        description: LoanApplication object.
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoanApplicationRequestInvoiceFile'
+        required: true
+      responses:
+        '200':
+          $ref: '#/components/responses/LoanApplicationCreateResponse'
+ 
+  '/v2/loan-applications/invoices/{invoice_id}':
+    post:
+      tags:
+        - Loan Application API
+      summary: Create Loan Request against an Invoice
+      description: |
+        Creates a new Loan Request against an Invoice. This request validates the submitter details and 
+        changes the Invoice status in case the request has been successfully submitted
+      operationId: createLoanRequest
+      parameters:
+        - in: path
+          name: invoice_id
+          description: Invoice-ID.
+          schema:
+            type: string
+          required: true
+      requestBody:
+        description: LoanApplication object.
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoanApplicationRequest'
+        required: true
+      responses:
+        '200':
+          $ref: '#/components/responses/LoanApplicationCreateResponse'
+
+  '/v2/loan-applications/invoices/{invoice_id}/confirm':
+    post:
+      tags:
+        - Loan Application API
+      summary: Provide confirmation for Loan Request
+      description: |
+        Provides the counterparty confirmation for a Loan Request. For this API to be functional, the program where
+        the invoice is provided must allow for counter party confirmation
+      operationId: createLoanRequestConfirmation
+      parameters:
+        - in: path
+          name: invoice_id
+          description: Invoice-ID.
+          schema:
+            type: string
+          required: true
+      requestBody:
+        description: LoanApplication object.
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoanApplicationRequest'
+        required: true
+      responses:
+        '200':
+          $ref: '#/components/responses/LoanApplicationCreateResponse'
+
+  '/v2/programs/{program_id}/company/self/invoice-files':
+    post:
+      tags:
+        - InvoiceFile API
+      summary: Create InvoiceFile 
+      description: |
+        Creates a new InvoiceFile containing one or more invoices. This creates invoices in the current organization under 
+        the given Program against one or more Buyers.
+        - In a Vendor Finance program, a Seller organization can use this API to create Invoices against one or more Buyers
+        - In a Channel Finance program, a Corporate Seller can use thie API to create Invoices against one or more Dealers 
+      operationId: createInvoiceFile
+      parameters:
+        - in: path
+          name: program_id
+          description: Program-ID.
+          schema:
+            type: string
+          required: true
+      requestBody:
+        description: InvoiceFile object.
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InvoiceFileCreateRequest'
+        required: true
+      responses:
+        '200':
+          $ref: '#/components/responses/InvoiceFileCreateResponse'
+
+    get:
+      tags:
+        - InvoiceFile API
+      summary: List InvoiceFiles
+      description: |
+        Lists all InvoiceFiles for the Company under the Program.
+      operationId: listInvoiceFiles
+      parameters:
+        - in: path
+          name: program_id
+          description: Program-ID.
+          schema:
+            type: string
+          required: true      
+        - in: query
+          name: start_date
+          description: Return results from this start date onwards
+          schema:
+            type: string
+            format: date-time
+        - in: query
+          name: end_date
+          description: Return results within this end date onwards
+          schema:
+            type: string
+            format: date-time
+        - in: query
+          name: status
+          description: Return results where InvoiceFileStatus is this
+          schema:
+            type: string
+            enum:
+              - created
+              - waiting-for-approval
+              - waiting-for-funding
+              - funded
+              - closed
+              - rejected-by-approver
+              - rejected-by-funding
+              - file-failed
+              - file-error
+              - unknown
+              - retired
+              - auto-close
+              - auto-pay
+              - confirmed
+              - partial
+      responses:
+        '200':
+          $ref: '#/components/responses/ListInvoiceFileIDsResponse'
+
+  '/v2/programs/{program_id}/company/all-sellers/invoice-files':
+    post:
+      tags:
+        - InvoiceFile API
+      summary: Create InvoiceFile for Sellers
+      description: |
+        Create an InvoiceFile for Sellers. This creates invoice in the Seller organizations under the given Program  
+      operationId: createInvoiceFileForSellers
+      parameters:
+        - in: path
+          name: program_id
+          description: Program-ID.
+          schema:
+            type: string
+          required: true
+      requestBody:
+        description: Request to create InvoiceFile .
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InvoiceFileCreateRequest'
+        required: true
+      responses:
+        '200':
+          $ref: '#/components/responses/InvoiceFileCreateResponse'
+    get:
+      tags:
+        - InvoiceFile API
+      summary: List InvoiceFiles for Sellers
+      description: |
+        Lists all InvoiceFiles for Sellers under the Program.
+      operationId: listInvoiceFilesForSellers
+      parameters:
+        - in: path
+          name: program_id
+          description: Program-ID.
+          schema:
+            type: string
+          required: true      
+        - in: query
+          name: start_date
+          description: Return results from this start date onwards
+          schema:
+            type: string
+            format: date-time
+        - in: query
+          name: end_date
+          description: Return results within this end date onwards
+          schema:
+            type: string
+            format: date-time
+        - in: query
+          name: status
+          description: Return results where InvoiceStatus is this
+          schema:
+            type: string
+            enum:
+              - created
+              - waiting-for-approval
+              - waiting-for-funding
+              - funded
+              - closed
+              - rejected-by-approver
+              - rejected-by-funding
+              - file-failed
+              - file-error
+              - unknown
+              - retired
+              - auto-close
+              - auto-pay
+              - confirmed
+              - partial
+      responses:
+        '200':
+          $ref: '#/components/responses/ListInvoiceFileIDsResponse'
+
+  '/v2/invoice-files/{invoice_file_id}':
+    get:
+      tags:
+        - InvoiceFile API
+      summary: Get details of InvoiceFile
+      description: |
+        Returns details of an InvoiceFile.
+      operationId: getInvoiceFileDetails
+      parameters:
+        - in: path
+          name: invoice_file_id
+          description: InvoiceFile-ID.
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          $ref: '#/components/responses/InvoiceFileDetailsResponse'
+
+  '/v2/invoice-files/{invoice_file_id}/invoices':
+    get:
+      tags:
+        - InvoiceFile API
+      summary: Get Invoices within an InvoiceFile
+      description: |
+        Returns all Invoices within an InvoiceFile.
+      operationId: getInvoicesByInvoiceFile
+      parameters:
+        - in: path
+          name: invoice_file_id
+          description: InvoiceFile-ID.
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          $ref: '#/components/responses/InvoiceFileInvoiceDetailsResponse'
+  
+  '/v2/programs/{program_id}/loans':
+    get:
+      tags:
+        - Loan API
+      summary: List Loans
+      description: |
+        Lists all Loans in the program.
+      operationId: getAllLoanIds
+      parameters:
+        - in: path
+          name: program_id
+          description: Program-ID.
+          schema:
+            type: string
+          required: true      
+        - in: query
+          name: start_date
+          description: Return results from this start date onwards
+          schema:
+            type: string
+            format: date-time
+        - in: query
+          name: end_date
+          description: Return results within this end date onwards
+          schema:
+            type: string
+            format: date-time
+        - in: query
+          name: status
+          description: Return results where LoanStatus is this
+          schema:
+            type: string
+            enum:
+              - in-progress
+              - open
+              - closed
+              - partial-paid
+              - overdue
+              - reject
+              - fail
+              - autopay
+      responses:
+        '200':
+          $ref: '#/components/responses/LoanIdsResponse'
+
+  '/v2/loans/{loan_id}':
+    get:
+      tags:
+        - Loan API
+      summary: Get Loan details
+      description: |
+        Use this operation to get details of a Loan.
+      operationId: getLoanDetails
+      parameters:
+        - in: path
+          name: loan_id
+          description: Loan-ID.
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          $ref: '#/components/responses/LoanDetailsResponse'
+
+  '/v2/loans/invoices/{invoice_id}':
+    get:
+      tags:
+        - Loan API
+      summary: Get Loan details for Invoice
+      description: |
+        Gets loan details for an Invoice.
+      operationId: getLoanDetailsForInvoice
+      parameters:
+        - in: path
+          name: invoice_id
+          description: Invoice-ID.
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          $ref: '#/components/responses/LoanDetailsForInvoiceResponse'
+
+  '/v2/loans/invoice-files/{invoice_file_id}':
+    get:
+      tags:
+        - Loan API
+      summary: Get Loan details for InvoiceFile
+      description: |
+        Use this operation to get details of a Loan.
+      operationId: getLoanDetailsForInvoiceFile
+      parameters:
+        - in: path
+          name: invoice_file_id
+          description: InvoiceFile-ID.
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          $ref: '#/components/responses/LoanDetailsForInvoiceResponse'
+
+  '/v2/loans/{loan_id}/repayments/capture':
+    post:
+      tags:
+        - Repayment API
+      summary: Capture Loan Repayment details
+      description: |
+        Notify of a new Repayment for a Loan
+      operationId: captureLoanRepaymentDetails
+      parameters:
+        - in: path
+          name: loan_id
+          description: ID of the loan that was repaid.
+          schema:
+            type: string
+          required: true
+      requestBody:
+        description: Loan repayment notification.
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/PaymentTransaction'
+        required: true
+      responses:
+        '200':
+          $ref: '#/components/responses/LoanRepaymentResponse'
+
+  '/v2/loans/{loan_id}/repayments':
+    get:
+      tags:
+        - Repayment API
+      summary: Get Repayment details
+      description: |
+        Returns repayment details for a Loan.
+      operationId: getLoanRepaymentDetails
+      parameters:
+        - in: path
+          name: loan_id
+          description: ID of the loan that was repaid.
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          $ref: '#/components/responses/LoanRepaymentResponse'
+  '/v2/async-upload/upload-vendors':
+    post:
+      tags:
+        - Vendor Onboard
+      summary: Upload Onboard File
+      description: |
+        Upload Onboard File
+      operationId: uploadAsyncFile
+      requestBody:
+        description: File Details.
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AsyncFileUpload'
+      responses:
+        '200':
+          $ref: '#/components/responses/AsyncFile'
+components:
+  schemas:
+    AccessToken:
+      type: object
+      description: Access token
+      properties:
+        value:
+          type: string
+          description: Value of the access token.
+        expiresAt:
+          type: string
+          format: date-time
+          description: |
+            Date and time when the access token expires and becomes
+            invalid.
+      required:
+        - value
+        - expiresAt
+
+    Address:
+      type: object
+      description: Address details
+      properties:
+        street:
+          type: string
+          description: House/Street/Locality
+        city:
+          type: string
+          description: City
+        state:
+          type: string
+          description: State
+        pin:
+          type: integer
+          description: PIN code
+      required:
+        - street
+        - city
+        - state
+        - pin
+
+    AssignedLenderRole:
+      type: object
+      description: Lender user and associated Role in Corporate Program
+      properties:
+        user_id:
+          type: string
+          description: User ID assigned to the User by the Canopi platform
+        user_name:
+          type: string
+          description: Name of the User
+        login_id:
+          type: string
+          description: Login ID of the Employee
+        email_address:
+          type: string
+          description: Email address of the User
+        role:
+          type: string
+          enum:
+          - Relationship Manager
+          - Program Manager
+        region_code:
+          type: string
+          description: Region code
+          enum:
+            - East
+            - North
+            - South
+            - West
+      required:
+        - user_id
+        - user_name
+        - role
+        - region_code
+            
+    AssignedLenderUserID:
+      type: object
+      description: Lender assigned to the Corporate Program
+      properties:
+        name:
+          type: string
+          description: Organization name of the Lender
+        lender_id:
+          type: string
+          description: Company-ID of the Lending organization
+        program_manager_id:
+          type: string
+          description: LoginId of the User with Program Manager Role
+        relationship_manager_id:
+          type: string
+          description: LoginId of the User with Relationship Manager Role
+      required:
+        - name
+        - lender_id
+        - program_manager_id
+        - relationship_manager_id
+        
+    AsyncFileUpload:
+      type: object
+      description: Upload Async File
+      properties:
+        corporate_code:
+          type: string
+          description: Onboard File name
+        vendor_type:
+          type: string
+          description: Onboard File name
+        file_name:
+          type: string
+          description: Onboard File name
+        file_base64:
+          type: string
+          description: Onboard File in Mase64 format
+      required:
+        - corporate_code
+        - vendor_type
+        - file_name
+        - file_base64
+
+    BankAccount:
+      type: object
+      description: Bank account details
+      properties:
+        account_id:
+          type: string
+          description: |
+            Account-ID generated internally on the Canopi platform. This ID is to be used in subsequent APIs when
+            referring to this Bank Account. This is a read only attribute for the application client and need not be passed
+            in the input object when creating the Bank Account.
+        bank:
+          type: string
+          description: Bank name
+        branch:
+          type: string
+          description: Branch name
+        ifsc:
+          type: string
+          description: IFSC code of the branch
+        account_number:
+          type: string
+          description: Account number
+        account_type:
+          type: string
+          description: Type of account
+          enum:
+            - savingsaccount
+            - currentaccount
+            - loanaccount
+            - overdraftaccount
+            - limitaccount
+        is_primary:
+          type: boolean
+          description: Is this the primary account for the account holder.
+        loan_account:
+          $ref: '#/components/schemas/LoanAccount'
+        overdraft_account:
+          $ref: '#/components/schemas/OverdraftAccount'
+        statements:
+          type: array
+          description: Monthly account statements
+          items:
+            $ref: '#/components/schemas/Document'
+      required:
+        - account_id
+        - bank
+        - branch
+        - ifsc
+        - account_number
+        - account_type
+        - is_primary
+
+    BaseLendingRate:
+      type: object
+      description: Base Lending Rate
+      properties:
+        name:
+          type: string
+          description: Base LendingRate Name
+        id:
+          type: string
+          description: BaseLendingRate-ID
+      required:
+        - name
+        - id
+
+    BaseLendingRateConfiguration:
+      type: array
+      items:
+        $ref: '#/components/schemas/BaseLendingRate'
+
+    BusinessEntity:
+      type: object
+      description: Details of a Business Entity.
+      properties:
+        company_id:
+          type: string
+          description: Company ID assigned to the organization
+        name:
+          type: string
+          description: Name of the Business Entity.
+        gstin:
+          type: array
+          items:
+            type: string
+            description: GST Identification Number.
+        cin:
+          type: string
+          description: Corporate Identity Number.
+        pan:
+          type: string
+          description: Permanent Account Number.
+        tin:
+          type: string
+          description: Tax payer Identifier Number.
+        addresses:
+          type: array
+          description: |
+            One or more addresses associated with the Business Entity.
+          items:
+            $ref: '#/components/schemas/Address'
+        contacts:
+          type: array
+          description: |
+            Contact details of one or more representatives of the
+            Business Entity.
+          items:
+            $ref: '#/components/schemas/Contact'
+      required:
+        - company_id
+        - name
+        - gstin
+        - addresses
+        - contacts
+
+    CommonResponse:
+      type: object
+      description: |
+        Fields common to all responses.
+      properties:
+        id:
+          type: string
+          description: |
+            Unique identifier assigned to each request-response pair.
+        status:
+          type: string
+          description: Status of the operation
+          enum:
+            - success
+            - failure
+        message:
+          type: string
+          description: |
+            Informational message describing the result of the operation
+      required:
+        - id
+        - status
+        - message
+
+    Company:
+      type: object
+      description: Company details.
+      properties:
+        company_id:
+          type: string
+          description: |
+            Company-ID generated internally on the Canopi platform. This ID is to be used in subsequent APIs when
+            referring to this organization. This is a read only attribute for the application client and need not be passed
+            in the input object when creating the Organization.
+        name:
+          type: string
+          description: Name of the Company
+        company_code:
+          type: string
+          description: Unique code assigned to the Company
+        corporate_id: 
+          type : string
+          description: If company is a corporate, its corporate id will be visible here.
+        van_bene_code: 
+          type: string
+          description: If the company is a vendor/dealer, VAN Beneficiary Code will be available here.
+        pan:
+          type: string
+          description: Company PAN
+        gstin:
+          type: array
+          items:
+            type: string
+            description: GST Identification Number
+        cin:
+          type: string
+          description: Corporate Identity Number
+        summary:
+          type: string
+          description: Short description of the Company
+        type_of_firm:
+          type: string
+          description: Type of Company
+          enum:
+            - private limited company
+            - public limited company
+            - sole proprietorship
+            - partnership
+            - limited liability partnership
+        industry:
+          type: string
+          description: Industry in which the Company operates
+          enum:
+            - electronics
+            - fast moving consumer goods
+            - information technology
+            - manufacturing
+            - retail and wholesale
+            - transportation
+        nature_of_business:
+          type: array
+          description: Nature of business
+          items:
+            type: string
+            enum:
+              - manufacturing
+              - corporate
+              - distributor
+              - supplier
+        no_of_employees:
+          type: string
+          description: Number of employees as a range
+          enum:
+            - 1-10
+            - 10-50
+            - 50-500
+            - more-than-500
+        date_of_registration:
+          type: string
+          format: date
+          description: Date of registration
+        addresses:
+          type: array
+          items:
+            $ref: '#/components/schemas/PremiseAddress'
+        bank_accounts:
+          type: array
+          description: Bank accounts of the Company.
+          items:
+            $ref: '#/components/schemas/BankAccount'
+        docs:
+          $ref: '#/components/schemas/CompanyDocuments'
+      required:
+        - company_id
+        - name
+        - company_code
+        - pan
+        - type_of_firm
+        - registered_address
+        - office_address
+        - bank_accounts
+        - docs
+
+    CompanyAndUser:
+      description: Used when adding new Company
+      type: object
+      properties:
+        user:
+          type: array
+          items:
+            $ref: '#/components/schemas/User'
+        company:
+          $ref: '#/components/schemas/Company'
+      required:
+        - user
+        - company
+        
+    CompanyAndUsers:
+      description: Used when adding new Company
+      type: object
+      properties:
+        users:
+          type: array
+          items:
+            $ref: '#/components/schemas/User'
+        company:
+          $ref: '#/components/schemas/Company'
+      required:
+        - user
+        - company
+
+    CompanyIdObject:
+      description: Company ID and name
+      type: object
+      properties:
+        name:
+          type: string
+        company_id:
+          type: string
+      required:
+        - name
+        - company_id
+    
+    CompanyBasicInfoObject:
+      description: Company ID, name, address and GSTN details
+      type: object
+      properties:
+        name:
+          type: string
+        company_id:
+          type: string
+        tin:
+          type: string
+        cin:
+          type: string
+        pan:
+          type: string
+        contacts:
+          $ref: '#/components/schemas/Contact'
+        gstin:
+          type: array
+          items:
+            type: string
+        company_addresses:
+          type: array
+          items:
+            $ref: '#/components/schemas/Address'
+      required:
+        - name
+        - company_id
+
+    CompanyDocuments:
+      type: object
+      description: A collection of associated documents for a Company.
+      properties:
+        financials:
+          type: array
+          description: Audited or provisional balance sheets and other financial statements.
+          items:
+            $ref: '#/components/schemas/Document'
+        tax_returns:
+          type: array
+          description: Income tax returns.
+          items:
+            $ref: '#/components/schemas/Document'
+        entity_documents:
+          type: array
+          description: Entity proof documents.
+          items:
+            $ref: '#/components/schemas/Document'
+        transaction_ledger:
+          type: array
+          description: Transaction ledger associated with the Company
+          items:
+            $ref: '#/components/schemas/Document'
+        bank_loans:
+          type: array
+          description: Loan sanction documents and debt schedules.
+          items:
+            $ref: '#/components/schemas/Document'
+        bank_statements:
+          type: array
+          description: Bank statements in PDF format.
+          items:
+            $ref: '#/components/schemas/Document'
+        gst_returns:
+          type: array
+          description: GST returns in PDF format.
+          items:
+            $ref: '#/components/schemas/Document'
+        credit_report:
+          type: array
+          description: Credit Reports.
+          items:
+            $ref: '#/components/schemas/Document'
+        sales_purchases:
+          type: array
+          description: Sales & Purchase ledgers
+          items:
+            $ref: '#/components/schemas/Document'
+        misc:
+          type: array
+          description: Miscellaneous documents.
+          items:
+            $ref: '#/components/schemas/Document'
+
+    CompanyProfileEnum:
+      type: object
+      description: Company Profile
+      properties:
+        category:
+          type: string
+          description: Type of profile
+          enum:
+            - profile-buyer
+            - profile-seller
+            - profile-corporate
+
+    Contact:
+      type: object
+      description: Contact details of a person.
+      properties:
+        name:
+          $ref: '#/components/schemas/Name'
+        phones:
+          type: array
+          description: Phone numbers.
+          items:
+            $ref: '#/components/schemas/PhoneNumber'
+        emails:
+          type: array
+          description: Email addresses.
+          items:
+            $ref: '#/components/schemas/EmailAddress'
+      required:
+        - name
+        - phones
+        - emails
+
+    CreditLimit:
+      type: object
+      description: Credit Limit details
+      properties:
+        limit_id:
+          type: string
+          description: CreditLimit ID
+        lender_id:
+          type: string
+          description: Lender ID providing the credit Limit
+        lender_name:
+          type: string
+          description: Organization name of the Lender providing the line
+        limit_info:
+          items:
+            $ref: '#/components/schemas/CreditLimitInfo'
+      required:
+        - limit_id
+        - lender_id
+        - lender_name
+        - limit_info
+
+    CreditLimitSetup:
+      type: object
+      description: Credit Limit details
+      properties:
+        limit_id:
+          type: string
+          description: CreditLimit ID
+        lender_id:
+          type: string
+          description: Lender ID providing the credit Limit
+        lender_name:
+          type: string
+          description: Organization name of the Lender providing the line
+        limit_info:
+          type: array
+          items:
+            $ref: '#/components/schemas/CreditLimitInfo'
+      required:
+        - limit_id
+        - lender_id
+        - lender_name
+        - limit_info
+
+
+    CreditPricing:
+      type: object
+      properties:
+        base_rate:
+          type: string
+          enum:
+            - MCLR
+            - Libor30
+            - Libor90
+            - Libor180
+            - STLR
+            - LTLR
+        base_rate_value:
+          type: number
+          format: float
+          description: |
+            Value of the base rate
+        differential:
+          type: number
+          format: float
+          description: | 
+            Differential applied to base rate to arrive at final interest rate. Differential can be negative as well
+        borne_by_party:
+          type: string
+          description: |
+            Party bearing the interest. Application clients need to provide this value when creating
+            a Program
+          enum:
+            - buyer
+            - seller
+        borne_by_company_id:
+          type: string
+          description: |
+            CompanyID bearing the interest. This field will be available as part of the response
+            to CreditLimits API for end customer.
+        borne_by_company_name:
+          type: string
+          description: Organization name bearing the interest
+        tenure:
+          $ref: '#/components/schemas/Tenure'
+      required:
+        - base_rate
+        - base_rate_value
+        - differential
+        - borne_by_party
+        - borne_by_company_id
+        - borne_by_company_name
+    
+    CreditLimitInfo:
+      type: object
+      description: Credit Limit info
+      properties:
+        credit_limits:
+          type: array
+          items:
+            $ref: '#/components/schemas/CreditLimitObject'
+        interest_buckets:
+          type: array
+          items:
+            $ref: '#/components/schemas/CreditPricing'
+        odc_buckets:
+          type: array
+          items:
+            $ref: '#/components/schemas/CreditPricing'
+        current_available_limit:
+          type: number
+          format: float
+          description: |
+            Amount available in the credit line currently. This is the
+            available balance that can be used to draw from the credit
+            line. 
+            This field is ignored in the POST request.
+        drawdown_limit:
+          type: number
+          format: float
+          description: |
+            Maximum credit amount that can be availed in a single tranche.
+            Amounts upto the available credit can be availed in multiple
+            drowdowns within this limit.
+      required:
+        - credit_limits
+        - interest_buckets
+        - available_limit
+        - drawdown_limit
+
+    CreditLimitObject:
+      type: object
+      properties:
+        max_limit:
+          type: number
+          format: integer
+          description: |
+            Maximum credit limit assigned. A value of **0** indicates
+            that the Company is **not** eligible for any loan.
+        limit_name:
+          type: string
+          description: Type of limits, like normal, adhoc etc
+          enum:
+            - limit_type_normal
+            - limit_type_adhoc
+            - limit_type_peak
+        sanction_date:
+          description: Date when the limit was sanctioned originally
+          type: string
+          format: date
+        revision_date:
+          description: Date when the limit was last revised
+          type: string
+          format: date
+        expiry_date:
+          description: Date when the limit will be expired
+          type: string
+          format: date
+      required:
+        - limit_name
+        - max_limit
+        - sanction_date
+        - revision_date
+        - expiry_date
+
+    CreditRequest:
+      type: object
+      description: Credit request details
+      properties:
+        amount:
+          type: integer
+          description: Credit line required.
+        tenure:
+          $ref: '#/components/schemas/Tenure'
+      required:
+        - amount
+        - tenure
+
+    Customer:
+      type: object
+      description: Customer details
+      properties:
+        businessInfo:
+          $ref: '#/components/schemas/BusinessEntity'
+        vintage:
+          type: string
+          format: date
+          description: Since when has it been a customer.
+        vendorCode:
+          type: string
+          description: |
+            Vendor code of the customer. This must be reflected in the
+            purchase order.
+        netSales:
+          type: array
+          description: Yearly net sales
+          items:
+            type: object
+            description: Sales details for a given year
+            properties:
+              year:
+                type: integer
+                description: Year of sales
+              amount:
+                type: integer
+                description: Amount of sales in that year
+            required:
+              - year
+              - amount
+        purchaseOrder:
+          $ref: '#/components/schemas/Document'
+        invoice:
+          $ref: '#/components/schemas/Document'
+      required:
+        - businessInfo
+        - vintage
+        - purchaseOrder
+        - netSales
+        - invoice
+
+    Document:
+      type: object
+      description: Supporting PDF document
+      properties:
+        document_id:
+          type: string
+          description: |
+            Document-ID generated internally on the Canopi platform. This ID is to be used in subsequent APIs when
+            referring to this Document. This is a read only attribute for the application client and need not be passed
+            in the input object when creating the Document.
+        category:
+          type: string
+          description: Type of document
+          enum:
+            - aadhaar
+            - bank statement
+            - balance sheet
+            - cancelled cheque
+            - driving license
+            - disbursement request
+            - e-way bill
+            - gst registration
+            - invoice
+            - nach mandate
+            - pan
+            - passport
+            - payment reference
+            - purchase order
+            - sanction letter
+            - vat registration
+        file:
+          type: string
+          format: byte
+          description: Base64-encoded PDF file
+        password:
+          type: string
+          format: password
+          description: |
+            Password if the PDF is protected
+      required:
+        - document_id
+        - file
+
+    EmailAddress:
+      type: object
+      description: Email address
+      properties:
+        email:
+          type: string
+          description: Email address
+        isPrimary:
+          type: boolean
+          description: Is this a primary email address.
+      required:
+        - email
+        - isPrimary
+
+    GlobalSettings:
+      type: object
+      description: Global Settings
+      properties:
+        base_lending_rate_config:
+            $ref: '#/components/schemas/BaseLendingRateConfiguration'
+      required:
+        - base_lending_rate_config
+
+    Invoice:
+      type: object
+      description: |
+        Invoice details.
+
+        # Definitions
+        - _seller_ - Supplier that will provide the service or goods.
+        - _buyer_ - Entity that will receive the service or goods.
+        - _billed_to_ - Entity that will pay for the service or goods.
+        - _preparedBy_ - Entity which prepared this invoice. This can be
+          the consignee or a third party such as an aggregator.
+
+      properties:
+        status:
+            $ref: '#/components/schemas/InvoiceStatus'
+        id:
+          type: string
+          description: |
+            Invoice ID generated internally
+        invoice_number:
+          type: string
+          description: |
+            Unique identification string for this invoice in the
+            accounting system of the Company creating the Invoice.
+        invoice_date:
+          type: string
+          format: date-time
+          description: Date of invoice
+        create_date:
+          type: string
+          format: date-time
+          description: |
+            Date when this invoice was created. This is an internally generated date
+            in the Canopi system
+        due_date:
+          type: string
+          format: date
+          description: Date when this invoice is due for payment.
+        po_date:
+          type: string
+          format: date-time
+          description: |
+            Date when the purchase order for this invoice was generated.
+        po_number:
+          type: string
+          description: Purchase order number.
+        payment_terms:
+          type: string
+          description: Payment terms for this invoice.
+        seller:
+          $ref: '#/components/schemas/BusinessEntity'
+        buyer:
+          $ref: '#/components/schemas/BusinessEntity'
+        billed_to:
+          $ref: '#/components/schemas/BusinessEntity'
+        preparedBy:
+          $ref: '#/components/schemas/BusinessEntity'
+        invoice_amount:
+          type: number
+          format: float
+          description: Final amount payable as per this invoice.
+        round_off_amount:
+          type: number
+          format: float
+          description: |
+            Round offs to be added before the invoice amount is calculated.
+        notes:
+          type: string
+          description: Notes appearing in the invoice.
+        line_items:
+          type: array
+          description: Line items in the invoice.
+          items:
+            $ref: '#/components/schemas/InvoiceItem'
+        docs:
+          type: array
+          description: |
+            Attachments as part of this invoice. Can be digital copies
+            of an invoice, purchase order, e-way bill or other supporting
+            documents.
+          items:
+            $ref: '#/components/schemas/Document'
+      required:
+        - id
+        - invoice_number
+        - invoice_date
+        - create_date
+        - due_date
+        - po_date
+        - po_number
+        - payment_terms
+        - seller
+        - buyer
+        - billed_to
+        - invoice_amount
+        - round_off_amount
+        - line_items
+        - docs
+
+    InvoiceCreateObject:
+      type: object
+      description: |
+        Invoice details for creation.
+
+        # Definitions
+        - _seller_ - Supplier that will provide the service or goods.
+        - _buyer_ - Entity that will receive the service or goods.
+        - _billed_to_ - Entity that will pay for the service or goods.
+        - _preparedBy_ - Entity which prepared this invoice. This can be
+          the consignee or a third party such as an aggregator.
+
+      properties:
+        invoice_number:
+          type: string
+          description: |
+            Unique identification string for this invoice in the
+            accounting system of the Company creating the Invoice.
+        invoice_date:
+          type: string
+          format: date-time
+          description: Date of invoice
+        due_date:
+          type: string
+          format: date
+          description: Date when this invoice is due for payment.
+        po_date:
+          type: string
+          format: date-time
+          description: |
+            Date when the purchase order for this invoice was generated.
+        po_number:
+          type: string
+          description: Purchase order number.
+        payment_terms:
+          type: string
+          description: Payment terms for this invoice.
+        seller_id:
+          type: string
+          description: Company ID of the Seller in Canopi.
+        seller_gstin:
+          type: string
+          description: GSTIN of the Seller.
+        buyer_id:
+          type: string
+          description: Company ID of the Buyer in Canopi.
+        buyer_gstin:
+          type: string
+          description: GSTIN of the Buyer.
+        grn_no:
+          type: string
+          description: Goods Receipt Note confirming the receipt of Goods
+        grn_date:
+          type: string
+          format: date-time
+          description: GRN receipt date with timestamp
+        invoice_amount:
+          type: number
+          format: float
+          description: Final amount payable as per this invoice.
+        round_off_amount:
+          type: number
+          format: float
+          description: |
+            Round offs to be added before the invoice amount is calculated.
+        notes:
+          type: string
+          description: Notes appearing in the invoice.
+        line_items:
+          type: array
+          description: Line items in the invoice.
+          items:
+            $ref: '#/components/schemas/InvoiceItem'
+        docs:
+          type: array
+          description: |
+            Attachments as part of this invoice. Can be digital copies
+            of an invoice, purchase order, e-way bill or other supporting
+            documents.
+          items:
+            $ref: '#/components/schemas/Document'
+      required:
+        - invoice_number
+        - invoice_date
+        - due_date
+        - seller_id
+        - buyer_id
+        - invoice_amount
+
+    InvoicesByCompany:
+      type: object
+      description: Invoice details.
+      properties:
+        company_id:
+          type: string
+          description: |
+            Company-ID for which the Invoices apply
+        invoices:
+          type: array
+          description: |
+            List of Invoices for the given company
+          items:
+            type: object
+            description: Basic details of an Invoice.
+            properties:
+              invoice_id:
+                type: string
+                description: Invoice ID associated with the Invoice
+              invoice_number:
+                type: string
+                description: Invoice Number associated with the Invoice
+              seller:
+                type: string
+                description: Name of the Company who issued the invoice
+              billed_to:
+                type: string
+                description: Name of the Company to whom the invoice was issued to
+              due_amount:
+                type: number
+                format: float
+                description: Amount due on the Invoice
+              create_date:
+                type: string
+                format: date-time
+                description: Create date of Invoice
+              invoice_date:
+                type: string
+                format: date-time
+                description: Date of Invoice
+              due_date:
+                type: string
+                format: date
+                description: Due date of Invoice
+              invoice_status:
+                $ref: '#/components/schemas/InvoiceStatus'
+            required:
+              - invoice_id
+              - consigor
+              - billed_to
+              - due_amount
+              - create_date
+              - due_date
+              - invoice_status
+      required:
+        - company_id
+        - invoices
+
+    InvoiceItem:
+      type: object
+      description: Line item in an invoice.
+      properties:
+        serial:
+          type: integer
+          description: Serial number of the item.
+        code:
+          type: string
+          description: Identification code of the item.
+        summary:
+          type: string
+          description: Item description.
+        hsn_code:
+          type: string
+          description: HSN code of the product or service.
+        unit_type:
+          type: string
+          description: 'Type of unit like Kg, Litres, MT, Nos, etc.'
+        unit_price:
+          type: number
+          format: float
+          description: Price per unit of the product
+        units:
+          type: integer
+          description: Number of items of the product.
+        discount:
+          type: number
+          format: float
+          description: Discount percentage to be applied to the product.
+        tax:
+          type: object
+          description: Applicable tax for the product
+          properties:
+            igst:
+              type: number
+              format: float
+              description: Applicable IGST percentage
+            cgst:
+              type: number
+              format: float
+              description: Applicable CGST percentage
+            sgst:
+              type: number
+              format: float
+              description: Applicable SGST percentage
+        metadata:
+          type: object
+          description: |
+            Additional data describing the line item.
+
+            # Definitions
+            - _source_address_ - Shipped *From* location.
+            - _destination_address_ - Shipped *To* location.
+
+          properties:
+            transport_details:
+              type: object
+              properties:
+                tripId:
+                  type: string
+                  description: Unique Identification for the trip
+                vehicle_registration_number:
+                  type: string
+                  description: Registration number of the vehicle
+                source_address:
+                  $ref: '#/components/schemas/Address'
+                destination_address:
+                  $ref: '#/components/schemas/Address'
+                material_description:
+                  type: string
+                  description: Description of the material.
+      required:
+        - serial
+        - code
+        - summary
+        - hsn_code
+        - unit_type
+        - unit_price
+        - units
+        - discount
+        - tax
+        - metadata
+
+    InvoiceStatus:
+      type: object
+      description: Invoice status details.
+      properties:
+        status:
+          type: string
+          description: |
+            Current status of the invoice. Note that this status is independent
+            of the Loan Status. Only invoices in sent state can be submitted for
+            applying for a loan.
+          enum:
+            - draft
+            - created
+            - pending approval by counterparty
+            - waiting for funding
+            - funded
+            - closed
+            - rejected by counterparty
+            - rejected by lender
+            - overdue
+            - paid
+            - partially paid
+            - dispute
+            - retired
+            - retired waiting for funding
+            - retired waiting for counterparty approval
+            - automatically closed
+            - autopay
+            - early payment offer accepted by vendor
+            - early payment offer settled by buyer
+      required:
+        - status
+
+    InvoiceFile:
+      type: object
+      description: |
+        Invoice File details.
+      properties:
+          invoice_file_id:
+            type: string
+            description: InvoiceFile ID associated with the Invoice File
+          create_date:
+            type: string
+            format: date-time
+            description: Create date of Invoice File.
+          modified_date:
+            type: string
+            format: date-time
+            description: Last processed date of Invoice File.
+          uploaded_by:
+            type: string
+            format: string
+            description: LoginID of the User who uploaded the file.
+          processing_mode:
+            $ref: '#/components/schemas/InvoiceFileProcessingMode'
+          invoice_count:
+            type: number
+            format: integer
+            description: Count of number of invoices
+          total_invoice_amount:
+            type: number
+            format: float
+            description: Amount adding up all the invoice amounts
+          invoice_file_status:
+            $ref: '#/components/schemas/InvoiceFileStatus'
+      required:
+        - invoice_file_id
+        - create_date
+        - modified_date
+        - uploaded_by
+        - processing_mode
+        - invoice_amount
+        - total_invoice_amount
+        - invoice_file_status
+
+    InvoiceFilesByCompany:
+      type: object
+      description: Invoice File details.
+      properties:
+        company_id:
+          type: string
+          description: |
+            Company-ID for which the Invoice Files apply
+        invoice_files:
+          type: array
+          description: |
+            List of Invoice Files for the given company
+          items:
+            $ref: '#/components/schemas/InvoiceFile'
+      required:
+        - company_id
+        - invoice_files
+
+    InvoiceFileProcessingMode:
+      type: object
+      description: Processing mode of InvoiceFile.
+      properties:
+        mode:
+          type: string
+          description: |
+            Indicates if the InvoiceFile is processed in Batch Mode or in File Mode.
+            - Batch Mode: Allows multiple invoices to be uploaded as a Batch, but different Invoices within a Batch can be
+            processed disjointly. i.e. not all Invoices in a Batch need to be processed simultaneously. Batch mode is therefore
+            more of an upload mechanism rather than a processsing mechanism because a subset of Invoices within a batch may be
+            processed independent of other invoices in the Batch.
+            - File Mode: Multiple invoice are not only uploaded together, but are also processed simultaneously. However, as part 
+            of processing the invoices, a few invoices could be Accepted while the rest could be Rejected. But all Invoices must
+            either be Accepted or Rejected; a File Mode does not allow partial processing of only a subset of invoices contained
+            in the File. 
+          enum:
+            - Batch
+            - File
+      required:
+        - mode
+
+    InvoiceFileStatus:
+      type: object
+      description: Invoice file status details.
+      properties:
+        status:
+          type: string
+          description: |
+            Current status of the invoice file. Note that this status is independent
+            of the Loan Status. Only invoices in sent state can be submitted for
+            applying for a loan.
+          enum:
+            - draft
+            - submitted
+            - processed
+            - dispute
+      required:
+        - status
+
+    InvoiceFileCreateRequest:
+      type: object
+      description: Object to create InvoiceFile.
+      properties:
+        file_type:
+          type: string
+          description: File types - valid is only xlsx
+        processing_mode:
+            $ref: '#/components/schemas/InvoiceFileProcessingMode'
+        file_name:
+          type: string
+          description: Name of the InvoiceFile
+        file_base64:
+          type: string
+          description: Base64-encoded file 
+      required:
+        - file_type
+        - processing_mode
+        - file_name
+        - file_base64
+
+    LoanCreateRequest:
+      type: object
+      description: Object to create a Loan
+      properties:
+        invoice_id:
+          type: string
+          description: Invoice-ID
+        loan_amount:
+          type: number
+          format: float
+          description: Amount to be disbursed as part of the loan
+      required:
+        - invoice_id
+
+    LoansCreateRequest:
+      type: object
+      description: Object to create one or more Loans
+      properties:
+        invoice_file_id:
+          type: string
+          description: |
+            InvoiceFile ID, is optional. If present, then all items in invoices array must be
+            from the same InvoiceFile
+        invoices:
+            type: array
+            items:
+              $ref: '#/components/schemas/LoanCreateRequest'
+      required:
+        - invoices
+
+    LoanApplicationRequestInvoiceFile:
+      type: array
+      description: Array to create a Loan Application
+      items:
+        properties:
+          invoice_id:
+            type: string
+            description: Invoice-ID
+          request_amount:
+            type: number
+            format: float
+            description: Amount requested towards Loan. Must be less than or equal to Invoice Amount
+          request_date:
+            type: string
+            format: date
+            description: |
+              Date when disbursement must be triggerred. Must be after current date
+              and must be within Invoice due date
+          eway_bill_no:
+            type: string
+          eway_bill_date:
+            type: string
+            format: date
+          grn_no:
+            type: string
+            description: Goods Receipt Note confirming the receipt of Goods
+          grn_date:
+            type: string
+            format: date-time
+            description: GRN receipt date with timestamp
+          disbursement_request:
+            $ref: '#/components/schemas/Document'
+          purchase_order:
+            $ref: '#/components/schemas/Document'
+          additional_documents:
+            type: array
+            description: |
+              Miscellaneous files relevant to the loan application.
+            items:
+              $ref: '#/components/schemas/Document'
+        required:
+          - invoice_id
+          - request_amount
+
+    LoanApplicationRequest:
+      type: object
+      description: Object to create a Loan Application
+      properties:
+        invoice_id:
+          type: string
+          description: Invoice-ID
+        request_amount:
+          type: number
+          format: float
+          description: Amount requested towards Loan. Must be less than or equal to Invoice Amount
+        request_date:
+          type: string
+          format: date
+          description: |
+            Date when disbursement must be triggerred. Must be after current date
+            and must be within Invoice due date
+        eway_bill_no:
+          type: string
+        eway_bill_date:
+          type: string
+          format: date
+        grn_no:
+          type: string
+          description: Goods Receipt Note confirming the receipt of Goods
+        grn_date:
+          type: string
+          format: date-time
+          description: GRN receipt date with timestamp
+        disbursement_request:
+          $ref: '#/components/schemas/Document'
+        purchase_order:
+          $ref: '#/components/schemas/Document'
+        additional_documents:
+          type: array
+          description: |
+            Miscellaneous files relevant to the loan application.
+          items:
+            $ref: '#/components/schemas/Document'
+      required:
+        - invoice_id
+        - request_amount
+
+    LoanApplicationsRequest:
+      type: object
+      description: Object to create one or more Loan Applications
+      properties:
+        invoice_file_id:
+          type: string
+          description: |
+            InvoiceFile ID, is optional. If present, then all items in invoices array must be
+            from the same InvoiceFile
+        requests:
+            type: array
+            items:
+              $ref: '#/components/schemas/LoanApplicationRequest'
+      required:
+        - requests
+
+    Ledger:
+      type: object
+      description: Sales ledger.
+      properties:
+        detailedLedger:
+          type: array
+          description: Detailed ledger data
+          items:
+            $ref: '#/components/schemas/LedgerEntry'
+        metadata:
+          type: object
+          description: Additional ledger data specific to platforms
+          properties:
+            logisticsData:
+              type: object
+              properties:
+                tripCount:
+                  type: integer
+                  description: Number of trips till date.
+                delayedCount:
+                  type: integer
+                  description: Number of trips that were delayed.
+                delayedDays:
+                  type: integer
+                  description: Total number of days delayed.
+                damagedTrips:
+                  type: integer
+                  description: |
+                    Total number of trips that incurred damages or
+                    got delayed.
+                damagePenaltyPercentage:
+                  type: number
+                  format: float
+                  description: |
+                    Percentage of total value of trips having damages
+                    or penalties
+              required:
+                - tripCount
+                - delayedCount
+                - delayedDays
+                - damagedTrips
+                - damagePenaltyPercentage
+      required:
+        - detailedLedger
+        - metadata
+
+    LedgerEntry:
+      type: object
+      description: |
+        Single entry in a ledger. It represents the details of a set of
+        transactions.
+      properties:
+        referenceNumber:
+          type: string
+          description: |
+            Reference number of the transaction. This can be an invoice
+            number if individual invoice details are sent in the ledger
+            data.
+        count:
+          type: integer
+          description: Number of transactions.
+        amount:
+          type: integer
+          format: float
+          description: Total transaction amount including applicable taxes.
+        damages:
+          type: number
+          format: float
+          description: |
+            Damages as a percentage of the total amount. Provide **0**
+            in case of no damages.
+        startDate:
+          type: string
+          format: date
+          description: |
+            Date when the transaction was started. This can be the invoice
+            date or the date of start of trip for certain sectors like
+            logistics.
+        endDate:
+          type: string
+          format: date
+          description: |
+            Date when the transaction completed. This is valid for certain
+            sectors like logistics where trip start and trip end data is
+            part of the sales ledger.
+        customerName:
+          type: string
+          description: |
+            Name of the customer associated with the transactions.
+        gstin:
+          type: string
+          description: GSTIN of the customer.
+        product:
+          type: string
+          description: Type of product transacted.
+      required:
+        - count
+        - amount
+        - damages
+        - startDate
+        - endDate
+
+    Loan:
+      type: object
+      description: Loan object.
+      properties:
+        loan_id:
+          type: string
+          description: Unique ID assigned to the Loan
+        loan_status:
+          $ref: '#/components/schemas/LoanStatus'
+        processing_date:
+          type: string
+          format: date-time
+          description: Date when the file was processed
+        borrower_company_id:
+          type: string
+          description: Company-ID
+          items:
+            type: string
+        invoice_id:
+          type: string
+          description: Invoice-ID associated with the Loan
+        invoice_file_id:
+          type: string
+          description: InvoiceFile-ID
+        due_amount:
+          type: number
+          format: float
+          description: Amount due on the Loan.
+        start_date:
+          type: string
+          format: date
+          description: Start date of Loan.
+        due_date:
+          type: string
+          format: date
+          description: Due date of Loan.
+        disbursement:
+          $ref: '#/components/schemas/Payment'
+        repayment:
+          $ref: '#/components/schemas/Payment'
+        docs:
+          type: array
+          description: |
+            Documents associated with the loan.
+          items:
+            $ref: '#/components/schemas/Document'
+      required:
+        - loan_id
+        - loan_status
+        - borrower_company_id
+        - invoice_id
+        - due_amount
+        - start_date
+        - due_date
+        - disbursement
+        - repayment
+        - docs
+
+    LoanAccount:
+      type: object
+      description: Details specific to a loan account.
+      properties:
+        typeOfLoan:
+          type: string
+          description: Type of loan.
+          enum:
+            - business
+            - property
+            - unsecured
+            - others
+        rateOfInterest:
+          type: number
+          format: float
+          description: Rate of interest per annum.
+        sanctionLimit:
+          type: integer
+          description: Amount sanctioned against the loan.
+        numberOfInstallments:
+          type: integer
+          description: Number of installments.
+        emiAmount:
+          type: number
+          format: float
+          description: Equated Monthly Installment amount.
+        emiStartDate:
+          type: string
+          format: date
+          description: Start date of the EMI.
+        emiEndDate:
+          type: string
+          format: date
+          description: End date of the EMI.
+        borrowers:
+          type: array
+          description: |
+            Names of borrowers associated with the loan account.
+          items:
+            $ref: '#/components/schemas/Name'
+        docs:
+          type: array
+          description: |
+            Sanction letters against the loan account.
+          items:
+            $ref: '#/components/schemas/Document'
+      required:
+        - typeOfLoan
+        - rateOfInterest
+        - sanctionLimit
+        - numberOfInstallments
+        - emiAmount
+        - emiStartDate
+        - emiEndDate
+        - borrowers
+        - docs
+
+    LoanCreateStatus:
+      type: object
+      description: Response for loan creation.
+      properties:
+        company_id:
+          type: string
+          description: Company-ID
+        application_status:
+          type: array
+          items:
+            type: object
+            properties:
+              invoice_id:
+                type: string
+                description: Invoice-ID
+              loan_status:
+                type: string
+                description: Status of the loan application
+              detailed_status:
+                type: string
+                description: Additional status of the loan application
+              loan_id:
+                type: string
+                description: Loan ID in case the loan was successfully created
+            required:
+              - invoice_id
+              - loan_status
+              - detailed_status
+              - loan_id
+      required:
+        - company_id
+        - application_status
+
+    LoansByCompany:
+      type: object
+      description: Quick details of a Loan.
+      properties:
+        loans:
+          type: array
+          description: |
+            List of Loans for the given company
+          items:
+            type: object
+            description: Basic details of Loan
+            properties:
+              loan_id:
+                type: string
+                description: Unique ID assigned to the Loan
+              invoice_id:
+                type: string
+                description: Invoice ID associated with the Loan
+              invoice_file_id:
+                type: string
+                description: InvoiceFile ID associated with the Loan
+              loan_amount:
+                  type: number
+                  format: float
+                  description: Amount considered as principal
+              due_amount:
+                type: number
+                format: float
+                description: Due amount on the Loan
+              start_date:
+                type: string
+                format: date
+                description: Start date of Loan
+              due_date:
+                type: string
+                format: date
+                description: Due date of Loan
+              loan_status:
+                $ref: '#/components/schemas/LoanStatus'
+            required:
+              - loan_id
+              - invoice_id
+              - invoice_file_id
+              - due_amount
+              - start_date
+              - due_date
+              - loan_status
+      required:
+        - company_id
+        - program_id
+        - loans
+
+    LoanDetailsForInvoice:
+      type: object
+      description: Details of a Loan for an Invoice or InvoiceFile.
+      properties:
+        company_id:
+          type: string
+          description: Company-ID
+        program_id:
+          type: string
+          description: Program-ID
+        invoice_file_id:
+          type: string
+          description: InvoiceFile-ID
+        corporate_name:
+          type: string
+          description: Name of the Corporate organization
+        disbursed_amount:
+          type: number
+          format: float
+          description: Amount disbursed out of the total invoice amount
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              invoice_id:
+                type: string
+                description: Invoice-ID
+              invoice_status:
+                $ref: '#/components/schemas/InvoiceStatus'
+              loan_id:
+                type: string
+                description: Loan-ID
+              loan:
+                $ref: '#/components/schemas/Loan'
+            required:
+              - invoice_id
+              - invoice_status
+              - loan_id
+              - loan
+      required:
+        - company_id
+        - program_id
+        - invoice_file_id
+        - corporate_name
+        - processing_date
+        - disbursed_amount
+        - details
+
+    Payment:
+      type: object
+      description: Loan repayment details.
+      properties:
+        transaction_count:
+          type: number
+          description: Number of transactions in this Payment object
+        transactions:
+          type: array
+          items:
+            $ref: '#/components/schemas/PaymentTransaction'
+      required:
+        - payment_id
+        - transaction_count
+        - transactions
+
+    PaymentTransaction:
+      type: object
+      description: Payment Transaction details.
+      properties:
+        date:
+          type: string
+          format: date
+          description: |
+            Date on which this payment transaction was initiated.
+        amount:
+          type: number
+          format: float
+          description: Amount paid.
+        payment_mode:
+          type: string
+          description: Mode of Repayments
+          enum:
+            - Cheque Payment
+            - NEFT
+            - RTGS
+            - IMPS
+            - FT
+        transaction_reference:
+          type: string
+          description: Reference number of the payment transaction.
+        canopi_reference:
+          type: string
+          description: Canopi's Uniquely generated reference number.
+        bank_name:
+          type: string
+          description: Name of the bank used for making the payment.
+        status:
+          type: string
+          description: Status of the transaction.
+        ifsc:
+          type: string
+          description: IFSC of the branch from where the payment was made.
+        account_number:
+          type: string
+          description: Account number from where the payment was made.
+        reference_doc:
+          $ref: '#/components/schemas/Document'
+        notes:
+          type: string
+          description: Optional comments added as part of the Payment transaction
+      required:
+        - date
+        - amount
+        - payment_mode
+        - transaction_reference
+        - bank_name
+        - ifsc
+        - account_number
+        - reference_doc
+
+    LoanStatus:
+      type: object
+      description: Loan status details.
+      properties:
+        status:
+          type: string
+          description: Current status of the loan application.
+          enum:
+            - processing
+            - disbursed
+            - rejected
+            - overdue
+            - repaid
+            - partial
+            - dispute
+      required:
+        - status
+
+    Name:
+      type: object
+      description: Full name of a person
+      properties:
+        firstName:
+          type: string
+          description: First name.
+        middleName:
+          type: string
+          description: Middle name.
+        lastName:
+          type: string
+          description: Last name.
+      required:
+        - firstName
+        - lastName
+
+    Occupancy:
+      type: object
+      description: Occupancy details of a premise.
+      properties:
+        category:
+          type: string
+          description: Type of occupancy.
+          enum:
+            - rented
+            - leased
+            - owned
+        occupied_since:
+          type: string
+          format: date
+          description: Since when has the premise been occupied.
+      required:
+        - category
+        - occupied_since
+
+    OperationStatus:
+      type: object
+      description: ID and associated status
+      properties:
+        client_reference:
+          type: string
+          description: |
+            ID passed by the client as an identifier. For e.g when Adding a List of Sellers,
+            the Client passes the Company Code in the input. This code will be provided in
+            the response for the client to map it's internal reference object
+        id:
+          type: string
+          description: |
+            ID generated by the Canopi platform to be used as an identifier for the object. This
+            could be User-ID, Company-ID, Document-ID depending on the request type. This ID may be used by
+            the client to reference this object in other APIs
+        status:
+          type: string
+          description: Status of operation
+          enum:
+            - successful
+            - failed
+        detailed_status:
+          type: string
+          description: String describing additional info for errors
+      required:
+        - id
+        - status
+        - detailed_status
+
+    OverdraftAccount:
+      type: object
+      description: Details specific to an overdraft account.
+      properties:
+        sanction_limit:
+          type: integer
+          description: Overdraft limit sanctioned.
+        rate_of_interest:
+          type: number
+          format: float
+          description: Rate of interest per annum.
+      required:
+        - sanction_limit
+        - rate_of_interest
+
+    PhoneNumber:
+      type: object
+      description: Phone number
+      properties:
+        category:
+          type: string
+          description: Type of phone number
+          enum:
+            - mobile
+            - landline
+        number:
+          type: integer
+          format: int64
+          description: Number
+        is_primary:
+          type: boolean
+          description: Is this a primary phone number.
+      required:
+        - category
+        - number
+        - is_primary
+
+    PremiseAddress:
+      type: object
+      description: Address details of a premise.
+      properties:
+        address_type:
+          type: string
+          description: Type of the address, whether registered address or branch address or residential
+          enum:
+            - Organization Address
+            - Correpondence Address
+        address:
+          $ref: '#/components/schemas/Address'
+        occupancy:
+          $ref: '#/components/schemas/Occupancy'
+      required:
+        - address_type
+        - address
+
+    ProgramType:
+      type: object
+      description: Type of the program
+      enum:
+      - vendor-finance
+      - channel-finance
+
+    ProgramRole:
+      type: object
+      description: Roles of the Company in the Program
+      enum:
+      - buyer
+      - seller
+      - corporate
+
+    UserRole:
+      type: object
+      description: Roles of the User in the Organization
+      enum:
+      - maker
+      - checker
+
+    Program:
+      type: object
+      description: Corporate Program Object
+      properties:
+        program_name:
+          type: string
+          description: Program name
+        program_type:
+          $ref: '#/components/schemas/ProgramType'
+        program_code:
+          type: string
+          description: Short name program code to identify the Program
+        description:
+          type: string
+          description: Detailed description of the Program
+        create_date:
+          type: string
+          format: date-time
+          description: Date of creation of Program
+        modified_date:
+          type: string
+          format: date-time
+          description: Date of last modification of Program
+        corporate_id:
+          type: string
+          description: Company ID of the Corporate
+      required:
+        - program_name
+        - program_type
+        - program_code
+        - create_date
+        - modified_date
+        - corporate_id
+
+    ProgramCreateRequest:
+      type: object
+      description: Payload for creating a Corporate Program
+      properties:
+        program_name:
+          type: string
+          description: Program name
+        program_type:
+          $ref: '#/components/schemas/ProgramType'
+        program_code:
+          type: string
+          description: Short name program code to identify the Program
+        description:
+          type: string
+          description: Detailed description of the Program
+        corporate_id:
+          type: string
+          description: Company ID of the Corporate
+        assigned_lenders:
+          type: array
+          items:
+            $ref: '#/components/schemas/AssignedLenderUserID'
+        workflow_configuration:
+          $ref: '#/components/schemas/ProgramWorkFlow'
+        workflow_business_rules:
+          $ref: '#/components/schemas/ProgramBusinessRule'
+        program_templates:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProgramTemplate'
+        buyer_credit_limit:
+          description: |
+            Credit Limit assigned to the Buyer as part of the Program. Is valid only if the limit is
+            on the Corporate
+          $ref: '#/components/schemas/ProgramLimitObject'
+      required:
+        - program_name
+        - program_type
+        - program_code
+        - corporate_id
+        - assigned_lenders
+        - workflow_configuration
+        - workflow_business_rules
+        - program_templates
+        
+    Rule:
+      type: object
+      description: Rules
+      properties:
+        rule_id:
+          type: string
+          description: Name of the Rule
+        boolean_value:
+          type: boolean
+          description: Whether the Rule is true or False
+      required:
+        - rule_id
+        - boolean_value
+          
+    ProgramWorkFlow:
+      type: object
+      description: Workflow configuration defined as part of Corporate Program parameters
+      properties:
+        invoice_submission_type:
+          type: string
+          description: |
+            Invoice originates from either Buyer or Seller. Described as Buyer-Led flow v/s
+            a Seller-Led flow
+          enum:
+            - BuyerLed
+            - SellerLed
+        counter_party_approval:
+          type: boolean
+          description: |
+            Whether invoice uploaded by a party needs counter party approval before landing
+            in Lender's bucket
+        invoice_creation_rules:
+          type: array
+          description: Set of Rules applied during invoice creation
+          items:
+            $ref: '#/components/schemas/Rule'
+        grn_enable:
+          type: boolean
+          description: Whether GRN needs to be provided as part of the workflow
+        claims_enable:
+          type: boolean
+          description: Whether Buyer can provide claims against an invoice
+        invoice_max_age_for_submit:
+          type: number
+          format: integer
+          description: |
+            Max age of the invoice (in days) allowed to be submitted for Funding. Invoices with Invoice date
+            prior to this period will be ineligible for uploads
+        invoice_auto_retire_for_due:
+          type: number
+          format: integer
+          description: |
+            Auto-retire invoices that are X days from Due date so that they become ineligible
+            for Funding
+
+      required:
+        - invoice_submission_type
+        - counter_party_approval
+        - invoice_creation_rules
+        - grn_enable
+        - claims_enable
+          
+    ProgramBusinessRule:
+      type: object
+      description: Business Rules applicable for a Corporate Program
+      properties:
+        tenure_starts_from:
+          description: Start date of Loan is based on this setting
+          type: string
+          enum:
+            - DateOfInvoice
+            - DateOfDisbursement
+            - DateOfGRN
+        interest_calc_type:
+          description: Interest calculation method
+          type: string
+          enum:
+            - Upfront
+            - UpfrontFromProceeds
+            - RearEnd
+            - Monthly
+        emi_date:
+          description: Valid for Monthly interest calc type
+          type: string
+          format: date
+        amount_consideration:
+          type: string
+          enum:
+            - FullAmount
+            - PreTaxAmount
+          description: Value to be considered for funding
+        funding_margin:
+          type: number
+          format: integer
+          description: Margin in percentage value that will be funded out of the amount under consideration
+        grace_period:
+          type: number
+          format: integer
+          description: Grace period offerred before overdues start accruing
+        interest_buckets:
+          type: array
+          items:
+            $ref: '#/components/schemas/CreditPricing'
+        overdue_buckets:
+          type: array
+          items:
+            $ref: '#/components/schemas/CreditPricing'
+        program_limit:
+          type: number
+          format: integer
+          description: |
+            Max limit at the aggregative level of the Corporate Program
+        limit_on:
+          type: string
+          description: |
+            Entity on whom the Limits is applicable. Depending on the entity, the limit account 
+            needs to be initialized in order for the entity to begin transactions on the Program 
+          enum:
+            - Buyer
+            - Seller
+        limit_max:
+          type: number
+          format: integer
+          description: |
+            Max limit applicable on the Entity upon whom the limit applies to
+        interest_paid_by:
+          type: string
+          description: Entity responsible for paying the interest
+          enum:
+            - buyer
+            - seller
+        repayment_by:
+          type: string
+          description: Entity responsible for repayments
+          enum:
+            - buyer
+            - seller
+      required:
+        - tenure_starts_from
+        - interest_calc_type
+        - amount_consideration
+        - funding_margin
+        - grace_period
+        - interest_buckets
+        - overdue_buckets
+        - program_limit
+        - limit_on
+        - limit_max
+        - interest_paid_by
+        - repayment_by
+
+    ProgramTemplate:
+      type: object
+      description: Template file 
+      properties:
+        template_id:
+          type: string
+          description: Template ID
+        template_type:
+          enum:
+          - invoice-file
+          - payment-file
+          - payment-advice
+      required:
+        - template_id
+        - templat_type
+
+    ProgramUpdateLendersList:
+      type: object
+      description: Payload for updating a set of Lenders for a Corporate Program
+      properties:
+        add_list:
+            type: array
+            description: |
+              List of companies which are added as Lenders in the Program
+            items:
+              $ref: '#/components/schemas/AssignedLenderUserID'
+      required:
+        - add_list
+
+    ProgramUpdateSellersList:
+      type: object
+      description: Payload for updating a set of Sellers for a Corporate Program
+      properties:
+        update_list:
+            type: array
+            description: |
+              List of companies which are added as Sellers in the Program along
+              with the limits assigned.
+            items:
+              $ref: '#/components/schemas/CompanyProgramLimit'
+        delete_list:
+            type: array
+            description: | 
+              List of companies which are removed as Sellers from the Program.
+            items:
+              $ref: '#/components/schemas/CompanyIdObject'
+
+    ProgramUpdateBuyersList:
+      type: object
+      description: Payload for updating a set of Sellers for a Corporate Program
+      properties:
+        update_list:
+            type: array
+            description: |
+              List of companies which are added as Buyers in the Program along
+              with the limits assigned.
+            items:
+              $ref: '#/components/schemas/CompanyProgramLimit'
+        delete_list:
+            type: array
+            description: | 
+              List of companies which are removed as Buyers from the Program.
+            items:
+              $ref: '#/components/schemas/CompanyIdObject'
+      required:
+        - update_list
+        - delete_list
+        
+    ProgramUpdatePermissions:
+      type: object
+      description: Payload for updating permissions for a Company in a  Program
+      properties:
+        company_id:
+            type: string
+            description: Company-ID.
+        permissions:
+            $ref: '#/components/schemas/ProgramPermissions'
+      required:
+        - company_id
+        - permissions
+    
+    ProgramID:
+      type: object
+      description: ProgramID Object
+      properties:
+        program_id:
+          type: string
+          description: Program identifier to be used in subsequent APIs
+        program_name:
+          type: string
+          description: Program name
+        program_type:
+          $ref: '#/components/schemas/ProgramType'
+        program_code:
+          type: string
+          description: Short name program code to identify the Program
+        corporate_id:
+          type: string
+          description: Company ID of the Corporate
+        program_roles:
+            $ref: '#/components/schemas/ProgramRole'
+      required:
+        - program_id
+        - program_name
+        - program_type
+        - program_code
+        - corporate_id
+        - roles
+
+    ProgramPermissions:
+      type: object
+      description: Program level permissions
+      properties:
+        view_rights:
+            $ref: '#/components/schemas/ProgramViewPermissions'
+        upload_rights:
+            $ref: '#/components/schemas/ProgramUploadPermissions'
+      required:
+        - view_rights
+        - upload_rights
+
+    ProgramViewPermissions:
+      type: object
+      description: Permissions pertaining to viewing of buyers and sellers in the Program
+      properties:
+        can_view_all_buyers:
+          type: boolean
+          description: Can see all Buyers in the Program
+        can_view_all_sellers:
+          type: boolean
+          description: Can see all Sellers in the Program
+
+    ProgramUploadPermissions:
+      type: object
+      description: Permissions pertaining to invoice upload actions
+      properties:
+        can_create_invoice:
+          type: boolean
+          description: Can upload invoices in manual mode
+        can_create_invoice_file:
+          type: boolean
+          description: Can upload invoices in file mode
+        can_create_invoice_bulk:
+          type: boolean
+          description: Can upload invoices in bulk mode
+        can_create_seller_invoice:
+          type: boolean
+          description: Can upload invoices of Sellers
+        can_create_seller_invoice_file:
+          type: boolean
+          description: Can upload invoice file for Sellers
+        can_create_seller_invoice_bulk:
+          type: boolean
+          description: Can upload invoices in bulk for Sellers
+        can_request_loan:
+          type: boolean
+          description: Can submit invoices for funding
+        can_view_interest_rate:
+          type: boolean
+          description: Can view applicable interest rates
+      required:
+        - can_create_invoice
+        - can_create_invoice_file
+        - can_create_invoice_bulk
+        - can_create_seller_invoice
+        - can_create_seller_invoice_file
+        - can_create_seller_invoice_bulk
+        - can_request_loan
+        - can_view_interest_rate
+
+    ProgramParams:
+      type: object
+      description: Parameters of the Program from the perspective of Buyer or Seller companies
+      properties:
+        workflow_configuration:
+          $ref: '#/components/schemas/ProgramWorkFlow'
+        workflow_business_rules:
+          $ref: '#/components/schemas/ProgramBusinessRule'
+        program_permissions:
+          $ref: '#/components/schemas/ProgramPermissions'
+        program_template:
+            $ref: '#/components/schemas/ProgramTemplate'
+      required:
+        - workflow_configuration
+        - workflow_business_rules
+        - program_permissions
+        - program_template
+
+    CompanyProgramLimit:
+      type: object
+      description: Limit assigned by the Lender
+      properties:
+        company:
+          $ref: '#/components/schemas/CompanyIdObject'
+        limits:
+          type: array
+          description: |
+            One or more Limits assigned by the Lender
+          items:
+            $ref: '#/components/schemas/ProgramLimitObject'
+      required:
+        - company
+        - limits
+
+    ProgramLimitObject:
+      type: object
+      description: Limit assigned by the Lender
+      properties:
+        auto_generate_limit_id:
+          type: boolean
+          description: |
+            Whether the Limit Account ID is to be autogenerated by the
+            system or is explicitly provided by the Lender
+        credit_limit:
+          description: |
+            Details of the Credit Limit
+          $ref: '#/components/schemas/CreditLimit'
+        credit_limit_account:
+          description: |
+            Details of Limits Account.
+          $ref: '#/components/schemas/BankAccount'
+      required:
+        - auto_generate_limit_id
+        - credit_limit
+        - credit_limit_account
+
+
+    CreateSellersObject:
+      type: object
+      description: Payload for adding a set of Sellers in Corporate
+      properties:
+        sellers:
+            type: array
+            description: |
+              List of companies which are added as seller in corporate
+            items:
+              $ref: '#/components/schemas/CompanyAndUsers'
+              
+    CreateBuyersObject:
+      type: object
+      description: Payload for adding a set of Buyers in Corporate
+      properties:
+        buyers:
+            type: array
+            description: |
+              List of companies which are added as buyers in corporate
+            items:
+              $ref: '#/components/schemas/CompanyAndUsers'
+             
+    CorporateRegistration:
+      type: object
+      description: Corporate details provided during creation
+      properties:
+        users:
+          type: array
+          description: |
+            Users of the Company. There *must* be at least one User.
+          items:
+            $ref: '#/components/schemas/User'
+        company:
+          $ref: '#/components/schemas/Company'
+        credit_request:
+          $ref: '#/components/schemas/CreditRequest'
+        ledger:
+          $ref: '#/components/schemas/Ledger'
+      required:
+        - users
+        - company
+
+    CompanyList:
+      type: object
+      description: List of Companies
+      properties:
+        list:
+          type: array
+          description: |
+            List of companies.
+          items:
+            $ref: '#/components/schemas/Company'
+      required:
+        - list
+
+    Tenure:
+      type: object
+      description: Loan repayment tenure.
+      properties:
+        period:
+          type: integer
+          description: Loan repayment period.
+        unit_of_time:
+          type: string
+          description: Unit of time.
+          enum:
+            - days
+        tenure_min:
+          type: integer
+          description: Minimum tenure of loan.
+        tenure_max:
+          type: integer
+          description: Maximum tenure of loan.
+      required:
+        - period
+        - unit_of_time
+
+    LenderRegistration:
+      type: object
+      description: Lender details provided during creation
+      properties:
+        users:
+          type: array
+          description: |
+            Users of the Company. There *must* be at least one User.
+          items:
+            $ref: '#/components/schemas/User'
+        company:
+          $ref: '#/components/schemas/Company'
+        program_manager:
+          items:
+            $ref: '#/components/schemas/AssignedLenderRole'
+        relationship_manager:
+          items:
+            $ref: '#/components/schemas/AssignedLenderRole'
+      required:
+        - users
+        - company
+
+    User:
+      type: object
+      description: User details.
+      properties:
+        user_id:
+          type: string
+          description: |
+            User-ID generated internally on the Canopi platform. This ID is to be used in subsequent API endpoints when
+            referring to the User. This is a read only attribute for the application client and need not be passed
+            in the input object when creating the User.
+        login_id:
+          type: string
+          description: |
+            Login-ID created for this User. This ID can be used by the User to login to the Canopi application.
+        cib_login_id:
+          type: string
+          description: |
+            Login ID in the Customer Internet Banking of the bank.
+        is_primary:
+          type: boolean
+          description: Whether this User is the primary user for the Organization
+        isWebBased:
+          type: boolean
+          description: Whether this user is Web based or not.
+        isApiBased:
+          type: boolean
+          description: Whether this user is API based or not.
+        isH2hBased:
+          type: boolean
+          description: Whether this user is H2H based or not.
+        contact:
+          $ref: '#/components/schemas/Contact'
+        residential_address:
+          $ref: '#/components/schemas/PremiseAddress'
+        gender:
+          type: string
+          description: Gender
+          enum:
+            - male
+            - female
+            - not specified
+        dob:
+          type: string
+          format: date
+          description: Date of birth
+        pan:
+          type: string
+          description: Permanent Account Number
+        aadhaar:
+          type: integer
+          format: int64
+          description: Aadhaar number
+        din:
+          type: integer
+          description: Director Identification Number
+        relationship:
+          type: string
+          description: Relationship of this User with the Company
+          enum:
+            - owner
+            - director
+            - partner
+            - relative of applicant
+            - key management personnel
+        docs:
+          $ref: '#/components/schemas/UserDocuments'
+      required:
+        - login_id
+        - is_primary
+        - contact
+        - residential_address
+        - gender
+        - dob
+        - pan
+        - aadhaar
+        - docs
+        
+    UserDocuments:
+      type: object
+      description: A collection of supporting documents for a User
+      properties:
+        id:
+          type: array
+          description: ID proof documents
+          items:
+            $ref: '#/components/schemas/Document'
+        address:
+          type: array
+          description: Address proof documents
+          items:
+            $ref: '#/components/schemas/Document'
+        tax_returns:
+          type: array
+          description: IT Returns
+          items:
+            $ref: '#/components/schemas/Document'
+        bank_loans:
+          type: array
+          description: Personal Loan documents & Debt schedule
+          items:
+            $ref: '#/components/schemas/Document'
+        bank_statements:
+          type: array
+          description: Bank statements in PDF format
+          items:
+            $ref: '#/components/schemas/Document'
+        credit_report:
+          type: array
+          description: Credit Report
+          items:
+            $ref: '#/components/schemas/Document'
+        misc:
+          type: array
+          description: Miscellaneous documents for the User
+          items:
+            $ref: '#/components/schemas/Document'
+
+  responses:
+
+    AccessTokenResponse:
+      description: Access token was successfully generated.
+      content:
+        application/json:
+          schema:
+            type: object
+            description: Response for get access token.
+            properties:
+              access_token:
+                type: string
+                description: Authorization Server generated access token 
+              token_type:
+                type: string
+                description: Returns token_type as "Bearer"
+              expires_in:
+                type: integer
+                description: |
+                  Time validity of this access_token. To use the access_token beyond the expiry period, the client must use 
+                  refresh token via Refresh Token Flow
+              scope:
+                type: string
+                description: The scopes that were authorized by the User
+              refresh_token:
+                type: string
+                description: Authorization server granted refresh token
+
+            required:
+              - access_token
+              - token_type
+              - expires_in
+              - scope
+              - refresh_token
+
+          example:
+            access_token:
+              value: bdabda00effe99
+            token_type: 
+              value: Bearer
+            expires_in:
+              value: 600
+            scope:
+              value: application
+            refresh_token:
+              value: 829ad4124ccabfe
+              
+    AsyncFile:
+      description: Company details.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              response_code:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  fileAsyncJobId:
+                    type: string
+                  status:
+                    type: string
+                  message:
+                    type: string
+    CompanyDetailsResponse:
+      description: Company details.
+      content:
+        application/json:
+          schema:
+            type: object
+            description: Response for Company details.
+            properties:
+              response_code:
+                $ref: '#/components/schemas/CommonResponse'
+              details:
+                $ref: '#/components/schemas/CompanyAndUser'
+            required:
+              - response_code
+              - details
+
+    CompanyCustomersResponse:
+      description: List of Customers for the Company
+      content:
+        application/json:
+          schema:
+            type: object
+            description: Response for Customers of the Company.
+            properties:
+              response_code:
+                $ref: '#/components/schemas/CommonResponse'
+              customers:
+                type: array
+                description: List of BusinessEntity who are customers of the given Company.
+                items:
+                  $ref: '#/components/schemas/BusinessEntity'
+            required:
+              - response_code
+              - customers
+
+    CompanySellersResponse:
+      description: List of Sellers/Vendors for the Company
+      content:
+        application/json:
+          schema:
+            type: object
+            description: Response for Sellers of the Company.
+            properties:
+              response_code:
+                $ref: '#/components/schemas/CommonResponse'
+              sellers:
+                type: array
+                description: List of Company who are Sellers of the given Company.
+                items:
+                  $ref: '#/components/schemas/Company'
+            required:
+              - response_code
+              - sellers
+
+    CompanyBuyersResponse:
+      description: List of Buyers/Dealers for the Company
+      content:
+        application/json:
+          schema:
+            type: object
+            description: Response for Buyers of the Company.
+            properties:
+              response_code:
+                $ref: '#/components/schemas/CommonResponse'
+              buyers:
+                type: array
+                description: List of Company who are Vendors of the given Company.
+                items:
+                  $ref: '#/components/schemas/Company'
+            required:
+              - response_code
+              - buyers
+
+    CompanyDocumentsResponse:
+      description: List of Documents for the Company
+      content:
+        application/json:
+          schema:
+            type: object
+            description: Response for ListDocuments of the Company.
+            properties:
+              response_code:
+                $ref: '#/components/schemas/CommonResponse'
+              documents:
+                type: array
+                description: List of Documents of the given Company.
+                items:
+                  $ref: '#/components/schemas/Document'
+            required:
+              - response_code
+              - documents
+
+    CompanyProfilesResponse:
+      description: List of Profiles for the Company
+      content:
+        application/json:
+          schema:
+            type: object
+            description: Response for ListProfiles of the Company.
+            properties:
+              response_code:
+                $ref: '#/components/schemas/CommonResponse'
+              profiles:
+                type: array
+                description: List of Profiles of the given Company.
+                items:
+                  $ref: '#/components/schemas/CompanyProfileEnum'
+            required:
+              - response_code
+              - profiles
+
+    CompanyUsersResponse:
+      description: List of Users for the Company
+      content:
+        application/json:
+          schema:
+            type: object
+            description: Response for Users of the Company.
+            properties:
+              response_code:
+                $ref: '#/components/schemas/CommonResponse'
+              users:
+                type: array
+                description: List of Users of the given Company.
+                items:
+                  $ref: '#/components/schemas/User'
+            required:
+              - response_code
+              - users
+
+    OperationStatusResponse:
+      description: Status of operation by ID
+      content:
+        application/json:
+          schema:
+            type: object
+            description: Response for Users of the Company.
+            properties:
+              response_code:
+                $ref: '#/components/schemas/CommonResponse'
+              status_array:
+                type: array
+                description: List of status by Users or Documents or BankAccounts.
+                items:
+                  $ref: '#/components/schemas/OperationStatus'
+            required:
+              - response_code
+              - status_array
+              
+    CompanyBankAccountsResponse:
+      description: List of Bank Accounts for the Company
+      content:
+        application/json:
+          schema:
+            type: object
+            description: Response for Bank Accounts of the Company.
+            properties:
+              response_code:
+                $ref: '#/components/schemas/CommonResponse'
+              bank_accounts:
+                type: array
+                description: List of Bank Accounts of the given Company.
+                items:
+                  $ref: '#/components/schemas/BankAccount'
+            required:
+              - response_code
+              - bank_accounts
+
+    CompanyDeleteResponse:
+      description: Company deleted successfully.
+      content:
+        application/json:
+          schema:
+            type: object
+            description: Response for Company deletion.
+            properties:
+              response_code:
+                $ref: '#/components/schemas/CommonResponse'
+            required:
+              - response_code
+          example:
+            response_code:
+              id: ff103
+              status: success
+              message: Company xyz-f123 deleted successfully.
+
+    CorporateDetailsResponse:
+      description: Corporate details.
+      content:
+        application/json:
+          schema:
+            type: object
+            description: Response for Company details.
+            properties:
+              response_code:
+                $ref: '#/components/schemas/CommonResponse'
+              company_id:
+                type: string
+                description: Company-ID.
+              url:
+                type: string
+                description: Unique URL for the Users.
+              onboarding_status:
+                type: string
+                description: Company onboarding status.
+                enum:
+                  - pending
+                  - success
+                  - failure
+              corporate:
+                $ref: '#/components/schemas/CorporateRegistration'
+            required:
+              - response_code
+              - company_id
+              - url
+              - onboarding_status
+              - corporate
+
+    CompanyIdsResponse:
+      description: List of Company-IDs
+      content:
+        application/json:
+          schema:
+            type: object
+            description: Response for Company-IDs.
+            properties:
+              response_code:
+                $ref: '#/components/schemas/CommonResponse'
+              ids:
+                type: array
+                description: List of Company-IDs.
+                items:
+                  type: object
+                  properties:
+                    company_id:
+                      type: string
+                      description: Company-ID.
+                    name:
+                      type: string
+                      description: Company name.
+                    onboarding_status:
+                      type: string
+                      description: Company onboarding status.
+                      enum:
+                        - pending
+                        - success
+                        - failure
+                  required:
+                    - company_id
+                    - name
+                    - onboarding_status
+            required:
+              - response_code
+              - ids
+          example:
+            response_code:
+              id: ff10a
+              status: success
+              message: Company-IDs returned
+            ids:
+              - company_id: xyz-f123
+                name: ABC Corporation Ltd
+                onboarding_status: success
+              - company_id: xyz-a791
+                name: BNJ Traders
+                onboarding_status: pending
+
+    CompanyRegisterResponse:
+      description: Successful registration.
+      content:
+        application/json:
+          schema:
+            type: object
+            description: Response for Company registration.
+            properties:
+              response_code:
+                $ref: '#/components/schemas/CommonResponse'
+              company_id:
+                type: string
+                description: Company-ID
+              company_status:
+                type: string
+                description: Company onboarding status.
+                enum:
+                  - pending
+                  - success
+                  - failure
+              url:
+                type: string
+                description: Unique URL for the Users.
+            required:
+              - response_code
+              - company_id
+              - company_status
+          example:
+            response_code:
+              id: "{123e4567-e89b-12d3-a456-426655440000}"
+              status: success
+              message: Company registered successfully
+            company_id: xyz-f123
+            company_status : success
+            url: apps.canopi.in/verify/xyz-f123.html
+
+    CompanyStatusResponse:
+      description: Company registration status.
+      content:
+        application/json:
+          schema:
+            type: object
+            description: Response for Company registration status.
+            properties:
+              response_code:
+                $ref: '#/components/schemas/CommonResponse'
+              companyStatus:
+                type: string
+                description: Company onboarding status.
+                enum:
+                  - pending
+                  - success
+                  - failure
+            required:
+              - response_code
+              - companyStatus
+          example:
+            response_code:
+              id: ff106
+              status: success
+              message: Company status returned
+            companyStatus: pending
+
+    CompanyAddBankAccountsResponse:
+      description: Successful registration.
+      content:
+        application/json:
+          schema:
+            type: object
+            description: Response for BankAccount addition.
+            properties:
+              response_code:
+                $ref: '#/components/schemas/CommonResponse'
+              bank_account_id:
+                type: string
+                description: BankAccount-ID
+            required:
+              - response_code
+              - bank_account_id
+          example:
+            response_code:
+              id: "{123e4567-e89b-12d3-a456-426655440000}"
+              status: success
+              message: BankAccount added successfully
+            bank_account_id: xyz-f123
+
+    GlobalSettingsResponse:
+      description: Global Settings data.
+      content:
+        application/json:
+          schema:
+            type: object
+            description: Response for GlobalSettings query.
+            properties:
+              response_code:
+                $ref: '#/components/schemas/CommonResponse'
+              settings:
+                $ref: '#/components/schemas/GlobalSettings'
+            required:
+              - response_code
+              - settings
+
+    CreditLimitResponse:
+      description: Credit Limit assignment.
+      content:
+        application/json:
+          schema:
+            type: object
+            description: Response for Company Credit Limit.
+            properties:
+              response_code:
+                $ref: '#/components/schemas/CommonResponse'
+              limits:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CreditLimit'
+            required:
+              - response_code
+              - limits
+
+    InvoiceDeleteResponse:
+      description: Invoice deleted successfully.
+      content:
+        application/json:
+          schema:
+            type: object
+            description: Response for Invoice deletion.
+            properties:
+              response_code:
+                $ref: '#/components/schemas/CommonResponse'
+            required:
+              - response_code
+          example:
+            response_code:
+              id: ff103
+              status: success
+              message: Invoice xyz-f123 deleted successfully.
+
+    InvoiceDetailsResponse:
+      description: Invoice details.
+      content:
+        application/json:
+          schema:
+            type: object
+            description: Response for Invoice details.
+            properties:
+              response_code:
+                $ref: '#/components/schemas/CommonResponse'
+              invoice:
+                $ref: '#/components/schemas/Invoice'
+            required:
+              - response_code
+              - invoice
+
+    InvoiceFileDetailsResponse:
+      description: InvoiceFile details.
+      content:
+        application/json:
+          schema:
+            type: object
+            description: Response for Invoice File details.
+            properties:
+              response_code:
+                $ref: '#/components/schemas/CommonResponse'
+              invoice_file:
+                $ref: '#/components/schemas/InvoiceFile'
+            required:
+              - response_code
+              - invoice
+
+    InvoiceFileInvoiceDetailsResponse:
+      description: Invoice details within InvoiceFile.
+      content:
+        application/json:
+          schema:
+            type: object
+            description: Response for Invoice within InvoiceFile.
+            properties:
+              response_code:
+                $ref: '#/components/schemas/CommonResponse'
+              invoice_file_id:
+                type: string
+                description: InvoiceFile-ID
+              invoice_ids:
+                $ref: '#/components/schemas/InvoicesByCompany'
+            required:
+              - response_code
+              - invoice_file_id
+              - invoice_ids
+
+    InvoiceCreateResponse:
+      description: Successful creation of Invoice.
+      content:
+        application/json:
+          schema:
+            type: object
+            description: Response for Invoice creation.
+            properties:
+              response_code:
+                $ref: '#/components/schemas/CommonResponse'
+              invoice_id:
+                type: string
+                description: Invoice-ID
+            required:
+              - response_code
+              - invoice_id
+          example:
+            response_code:
+              id: "{123e4567-e89b-12d3-a456-426655440000}"
+              status: success
+              message: Invoice created successfully
+            invoice_id: xyz-f123
+
+    InvoiceFileCreateResponse:
+      description: Successful creation of InvoiceFile.
+      content:
+        application/json:
+          schema:
+            type: object
+            description: Response for Invoice File creation.
+            properties:
+              response_code:
+                $ref: '#/components/schemas/CommonResponse'
+              invoice_file_id:
+                type: string
+                description: InvoiceFile-ID
+            required:
+              - response_code
+              - invoice_file_id
+          example:
+            response_code:
+              id: "{123e4567-e89b-12d3-a456-426655440000}"
+              status: success
+              message: Invoice file created successfully
+            invoice_file_id: xyz-f123
+
+    LenderDetailsResponse:
+      description: Lender details.
+      content:
+        application/json:
+          schema:
+            type: object
+            description: Response for Company details.
+            properties:
+              response_code:
+                $ref: '#/components/schemas/CommonResponse'
+              company_id:
+                type: string
+                description: Company-ID.
+              url:
+                type: string
+                description: Unique URL for the Users.
+              onboarding_status:
+                type: string
+                description: Company onboarding status.
+                enum:
+                  - pending
+                  - success
+                  - failure
+              lender:
+                $ref: '#/components/schemas/LenderRegistration'
+            required:
+              - response_code
+              - company_id
+              - url
+              - onboarding_status
+              - lender
+
+    LenderIdsResponse:
+      description: List of Lender Company-IDs and their details
+      content:
+        application/json:
+          schema:
+            type: object
+            description: Response for Lender Company-IDs.
+            properties:
+              response_code:
+                $ref: '#/components/schemas/CommonResponse'
+              ids:
+                type: array
+                description: List of Lender Company-IDs.
+                items:
+                  type: object
+                  properties:
+                    company_id:
+                      type: string
+                      description: Company-ID of Lender.
+                    name:
+                      type: string
+                      description: Lender Company name.
+                    onboarding_status:
+                      type: string
+                      description: Company onboarding status.
+                      enum:
+                        - pending
+                        - success
+                        - failure
+                  required:
+                    - company_id
+                    - name
+                    - onboarding_status
+            required:
+              - response_code
+              - ids
+
+    LoanApplicationCreateResponse:
+      description: Response to creation of Loan Requests.
+      content:
+        application/json:
+          schema:
+            type: object
+            description: Response for Loan Request creation.
+            properties:
+              response_code:
+                $ref: '#/components/schemas/CommonResponse'
+              application_response:
+                type: array
+                description: List of Invoice Ids and respective application statuses
+                items:
+                  properties:
+                    invoice_id:
+                      type: string
+                      description: Invoice-ID.
+                    application_status:
+                      type: string
+                      description: Status, whether the application was created successfully or not
+                    additional_status:
+                      type: string
+                      description: Additional status in case the Application creation failed
+                    invoice_status:
+                      type: string
+                      description: Invoice Status
+                  required:
+                    - invoice_id
+                    - application_status
+                    - additional_status
+                    - invoice_status
+            required:
+              - response_code
+              - application_response
+          example:
+            response_code:
+              id: "{123e4567-e89b-12d3-a456-426655440000}"
+              status: success
+              message: Invoice created successfully
+            invoice_id: xyz-f123
+
+    ListInvoiceIDsResponse:
+      description: Invoice-IDs list
+      content:
+        application/json:
+          schema:
+            type: object
+            description: Response for Invoice-IDs.
+            properties:
+              response_code:
+                $ref: '#/components/schemas/CommonResponse'
+              invoice_ids:
+                $ref: '#/components/schemas/InvoicesByCompany'
+            required:
+              - response_code
+              - invoice_ids
+
+    ListInvoiceFileIDsResponse:
+      description: InvoiceFile-IDs list
+      content:
+        application/json:
+          schema:
+            type: object
+            description: Response for Invoice-IDs.
+            properties:
+              response_code:
+                $ref: '#/components/schemas/CommonResponse'
+              invoice_ids:
+                $ref: '#/components/schemas/InvoiceFilesByCompany'
+            required:
+              - response_code
+              - invoice_ids
+
+    ListProgramBuyersResponse:
+      description: List of basic information about the Buyers
+      content:
+        application/json:
+          schema:
+            type: object
+            description: Response for listing Buyers in a program.
+            properties:
+              response_code:
+                $ref: '#/components/schemas/CommonResponse'
+              buyers:
+                type: array
+                description: List of Buyer companies
+                items:
+                  $ref: '#/components/schemas/CompanyBasicInfoObject'
+            required:
+              - response_code
+              - buyers
+
+    ListProgramSellersResponse:
+      description: List of basic information about the Sellers
+      content:
+        application/json:
+          schema:
+            type: object
+            description: Response for listing Sellers in a program.
+            properties:
+              response_code:
+                $ref: '#/components/schemas/CommonResponse'
+              sellers:
+                type: array
+                description: List of Seller companies
+                items:
+                  $ref: '#/components/schemas/CompanyBasicInfoObject'
+            required:
+              - response_code
+              - sellers
+
+    ListProgramBuyersParamsResponse:
+      description: List of Program Parameters for Buyers
+      content:
+        application/json:
+          schema:
+            type: object
+            description: Response for listing Program parameters for Buyers in a program.
+            properties:
+              response_code:
+                $ref: '#/components/schemas/CommonResponse'
+              buyers:
+                type: array
+                description: List of Buyer companies
+                items:
+                  $ref: '#/components/schemas/BusinessEntity'
+            required:
+              - response_code
+              - buyers
+
+    ListProgramSellersParamsResponse:
+      description: List of Program Parameters for Sellers
+      content:
+        application/json:
+          schema:
+            type: object
+            description: Response for listing Program parameters for Sellers in a program.
+            properties:
+              response_code:
+                $ref: '#/components/schemas/CommonResponse'
+              sellers:
+                type: array
+                description: List of Buyer companies
+                items:
+                  $ref: '#/components/schemas/BusinessEntity'
+            required:
+              - response_code
+              - sellers
+
+    ListProgramIDsResponse:
+      description: Program-IDs list
+      content:
+        application/json:
+          schema:
+            type: object
+            description: Response for Program-IDs.
+            properties:
+              response_code:
+                $ref: '#/components/schemas/CommonResponse'
+              program_ids:
+                type: array
+                description: List of available Program IDs
+                items:
+                  $ref: '#/components/schemas/ProgramID'
+            required:
+              - response_code
+              - program_ids
+
+    LoanCreateResponse:
+      description: Successful submission of the loan application.
+      content:
+        application/json:
+          schema:
+            type: object
+            description: Response for loan application.
+            properties:
+              response_code:
+                $ref: '#/components/schemas/CommonResponse'
+              application_status:
+                $ref: '#/components/schemas/LoanCreateStatus'
+            required:
+              - response_code
+              - application_status
+
+    LoanDetailsResponse:
+      description: Details of a Loan.
+      content:
+        application/json:
+          schema:
+            type: object
+            description: Response for loan details.
+            properties:
+              response_code:
+                $ref: '#/components/schemas/CommonResponse'
+              loan:
+                $ref: '#/components/schemas/Loan'
+            required:
+              - response_code
+              - loan
+
+    LoanDetailsForInvoiceResponse:
+      description: Response for Loan details for an Invoice or InvoiceFile.
+      content:
+        application/json:
+          schema:
+            type: object
+            description: Response for loan details for an Invoice.
+            properties:
+              response_code:
+                $ref: '#/components/schemas/CommonResponse'
+              loan_details:
+                $ref: '#/components/schemas/LoanDetailsForInvoice'
+            required:
+              - response_code
+              - loan_details
+
+    LoanIdsByCompanyResponse:
+      description: List of loan-IDs for a Company
+      content:
+        application/json:
+          schema:
+            type: object
+            description: Response for loan-IDs by Company.
+            properties:
+              response_code:
+                $ref: '#/components/schemas/CommonResponse'
+              loan_ids:
+                $ref: '#/components/schemas/LoansByCompany'
+            required:
+              - response_code
+              - loan_ids
+
+    LoanIdsResponse:
+      description: Loan-IDs list
+      content:
+        application/json:
+          schema:
+            type: object
+            description: Response for Loan-IDs.
+            properties:
+              response_code:
+                $ref: '#/components/schemas/CommonResponse'
+              loan_ids:
+                $ref: '#/components/schemas/LoansByCompany'
+            required:
+              - response_code
+              - loan_ids
+
+    LoanRepaymentResponse:
+      description: Loan Repayment details.
+      content:
+        application/json:
+          schema:
+            type: object
+            description: Response for loan repayment notification.
+            properties:
+              response_code:
+                $ref: '#/components/schemas/CommonResponse'
+              repayment:
+                $ref: '#/components/schemas/Payment'
+            required:
+              - response_code
+              - repayment
+
+    LoanStatusResponse:
+      description: Status of the loan application.
+      content:
+        application/json:
+          schema:
+            type: object
+            description: Response for loan application status.
+            properties:
+              response_code:
+                $ref: '#/components/schemas/CommonResponse'
+              loanStatus:
+                $ref: '#/components/schemas/LoanStatus'
+            required:
+              - response_code
+              - loanStatus
+          example:
+            response_code:
+              id: ff109
+              status: success
+              message: Loan application status.
+            loanStatus:
+              status: disbursed
+
+    ProgramIDsResponse:
+      description: Program-IDs list
+      content:
+        application/json:
+          schema:
+            type: object
+            description: Response for Program-IDs.
+            properties:
+              response_code:
+                $ref: '#/components/schemas/CommonResponse'
+              program_ids:
+                $ref: '#/components/schemas/ProgramID'
+            required:
+              - response_code
+              - program_ids
+
+    ProgramParamsResponse:
+      description: Program level parameters for a given Company in a Program
+      content:
+        application/json:
+          schema:
+            type: object
+            description: Response for Program level Parameters
+            properties:
+              response_code:
+                $ref: '#/components/schemas/CommonResponse'
+              company_id:
+                type: string
+                description: Company-ID
+              params:
+                $ref: '#/components/schemas/ProgramParams'
+            required:
+              - company_ids
+              - params
+
+    ProgramPermissionsResponse:
+      description: Program level permissions for a given Company in a Program
+      content:
+        application/json:
+          schema:
+            type: object
+            description: Response for Program level Permissions
+            properties:
+              response_code:
+                $ref: '#/components/schemas/CommonResponse'
+              company_id:
+                type: string
+                description: Company-ID
+              company_type:
+                type: string
+                description: Type of the company within this Program
+              permissions:
+                $ref: '#/components/schemas/ProgramPermissions'
+            required:
+              - company_ids
+              - company_type
+              - permissions
+
+    ProgramCreateResponse:
+      description: Successful creation of Program.
+      content:
+        application/json:
+          schema:
+            type: object
+            description: Response for Program creation.
+            properties:
+              response_code:
+                $ref: '#/components/schemas/CommonResponse'
+              program_id:
+                type: string
+                description: Program-ID
+              program_name:
+                type: string
+                description: Program Names
+              program_code:
+                type: string
+                description: Short name code for the Program
+              create_date:
+                type: string
+                format: date-time
+                description: Date of creation of Program
+            required:
+              - response_code
+              - program_id
+              - program_name
+              - program_code
+              - create_date
+          example:
+            response_code:
+              id: "{123e4567-e89b-12d3-a456-426655440000}"
+              status: success
+              message: Program created successfully
+            program_id: xyz-f123
+            program_name: "Vendor Finance for XYZ Corporate"
+            program_code: "VF-XYZ-DU"
+
+    ProgramUpdateResponse:
+      description: Successful updation of Program.
+      content:
+        application/json:
+          schema:
+            type: object
+            description: Response for Program update operation.
+            properties:
+              response_code:
+                $ref: '#/components/schemas/CommonResponse'
+              program_id:
+                type: string
+                description: Program-ID
+              create_date:
+                type: string
+                format: date-time
+                description: Date of creation of Program
+              modified_date:
+                type: string
+                format: date
+                description: Date of last modification of Program
+            required:
+              - response_code
+              - program_id
+              - create_date
+              - modified_date
+
+    ProgramListResponse:
+      description: Retrieve program IDs.
+      content:
+        application/json:
+          schema:
+            type: object
+            description: Response for Program update operation.
+            properties:
+              response_code:
+                $ref: '#/components/schemas/CommonResponse'
+              program_id:
+                type: string
+                description: Program-ID
+              create_date:
+                type: string
+                format: date-time
+                description: Date of creation of Program
+              modified_date:
+                type: string
+                format: date-time
+                description: Date of last modification of Program
+            required:
+              - response_code
+              - program_id
+              - create_date
+              - modified_date
+              
+    ProgramDetailsResponse:
+      description: Retrieve program IDs.
+      content:
+        application/json:
+          schema:
+            type: object
+            description: Response for Program update operation.
+            properties:
+              response_code:
+                $ref: '#/components/schemas/CommonResponse'
+              program_id:
+                type: string
+                description: Program-ID
+              create_date:
+                type: string
+                format: date-time
+                description: Date of creation of Program
+              program:
+                $ref: '#/components/schemas/Program'
+            required:
+              - response_code
+              - program_id
+              - create_date
+              - program
+              
+    
+  securitySchemes:
+    API-Security:
+      type: http
+      description: Access token based authorization.
+      scheme: Bearer
+
+security:
+  - API-Security: []
